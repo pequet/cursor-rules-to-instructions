@@ -1,14 +1,46 @@
-Script Execution
+Cursor Rules to Instructions Converter v1.0
 ========================================================================
-- Asking AI: What is the capital of Belgium?
-No model specified, using default model for perplexity: sonar-pro
-[PerplexityProvider] Token usage set: 23 prompt + 16 completion = 39 total
-[Telemetry] Updating command state with: {
-  promptTokens: 23,
-  completionTokens: 16,
-  provider: 'perplexity',
-  model: 'sonar-pro'
-}
-The capital of Belgium is **Brussels**[1][2][3].
+Converting .mdc files to .instructions.md format
+Project root: Projects/Seed/Views/Public Repositories/Public Repository Templates/cursor-project-boilerplate
+- Scanning for .mdc files in .cursor/rules
+Found 29 .mdc file(s) to convert
+Converting 291-script-formatting-standards.mdc → 291-script-formatting-standards.instructions.md
+Converting 295-file-preservation-standard.mdc → 295-file-preservation-standard.instructions.md
+Converting 296-operational-file-safety-protocol.mdc → 296-operational-file-safety-protocol.instructions.md
+Converting 230-framework-intelligence.mdc → 230-framework-intelligence.instructions.md
+Converting 207-timestamp-accuracy-protocol.mdc → 207-timestamp-accuracy-protocol.instructions.md
+Converting 000-rule-organization.mdc → 000-rule-organization.instructions.md
+Converting 300-boilerplate-initialization-protocol.mdc → 300-boilerplate-initialization-protocol.instructions.md
+Converting 290-script-attribution-standards.mdc → 290-script-attribution-standards.instructions.md
+Converting 200-never-delay-action.mdc → 200-never-delay-action.instructions.md
+Converting 201-initialization-behavior.mdc → 201-initialization-behavior.instructions.md
+Converting 240-sequential-thinking-prompt.mdc → 240-sequential-thinking-prompt.instructions.md
+Converting 226-action-plan-protocol.mdc → 226-action-plan-protocol.instructions.md
+Converting 210-memory-bank.mdc → 210-memory-bank.instructions.md
+Converting 203-questions-are-not-commands.mdc → 203-questions-are-not-commands.instructions.md
+Converting 270-avoid-redundancy.mdc → 270-avoid-redundancy.instructions.md
+Converting 202-critical-truthfulness-protocol.mdc → 202-critical-truthfulness-protocol.instructions.md
+Converting 250-writing-style.mdc → 250-writing-style.instructions.md
+Converting vibe-tools.mdc → vibe-tools.instructions.md
+WARN: Special handling for: vibe-tools.mdc
+Converting 245-frontmatter-guidelines.mdc → 245-frontmatter-guidelines.instructions.md
+Converting 280-inbox-file-naming.mdc → 280-inbox-file-naming.instructions.md
+Converting 292-javascript-attribution-standards.mdc → 292-javascript-attribution-standards.instructions.md
+WARN: SKIPPED auto-generated file: derived-cursor-rules.mdc (content should be migrated to numbered rules)
+Converting 220-memory-reset-protocol.mdc → 220-memory-reset-protocol.instructions.md
+Converting 255-codeblock-formatting.mdc → 255-codeblock-formatting.instructions.md
+Converting 001-effective-rule-writing.mdc → 001-effective-rule-writing.instructions.md
+Converting 293-javascript-formatting-standards.mdc → 293-javascript-formatting-standards.instructions.md
+Converting 285-vibetools-output-to-inbox.mdc → 285-vibetools-output-to-inbox.instructions.md
+Converting 205-diagnostic-hierarchy-and-assumption-checking.mdc → 205-diagnostic-hierarchy-and-assumption-checking.instructions.md
+Converting 206-direct-integration-of-verified-facts.mdc → 206-direct-integration-of-verified-facts.instructions.md
 ========================================================================
-🏁 Script logic finished.
+🏁 Conversion complete!
+Converted: 28 files
+Skipped: 1 files
+========================================================================
+Next steps:
+1. Review the converted files in .github/instructions
+2. Test with GitHub Copilot in VS Code
+3. Adjust applyTo patterns if needed
+4. Consider adding a single .github/copilot-instructions.md for global rules

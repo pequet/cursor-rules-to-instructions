@@ -4,8 +4,11 @@ domain: methods
 subject: Cursor Rules to Instructions
 status: active
 tags: notes-active
-summary: "Explains the boilerplate's context within the parent framework."
+summary: "Explains the repository's context within the parent framework."
 ---
+
+> [!NOTE]
+> This document originates from a boilerplate template which may have evolved since this project was created. The latest version can be found in the [cursor-project-boilerplate repository](https://github.com/pequet/cursor-project-boilerplate/blob/main/docs/000-Framework-Context.md).
 
 # Framework Context
 
@@ -27,68 +30,32 @@ Root/
 └── Projects/     # Modular "plugins" that extend the Core
 ```
 
--   **`Core`:** Contains the stable, foundational elements of the system.
--   **`Projects`:** A collection of modular "plugins" that extend the `Core`. This public repository is part of a Project called `Seed`.
-
-### Level 2: The `MVC` Pattern in Projects
-
-Each `Project`, including `Seed`, is organized using the Model-View-Controller (MVC) architectural pattern:
-
-```text
-Projects/
-└── Seed/
-    ├── Controllers/  # Logic connecting Models and Views
-    ├── Models/       # Data and business logic
-    └── Views/        # User interfaces and public-facing elements
-```
-
--   **`Models`:** Holds the data, logic, and state.
--   **`Views`:** Contains all user-facing interfaces. This is where public repositories like the one you're in now reside.
--   **`Controllers`:** The operational logic that connects `Models` and `Views`.
-
-### Level 3: The `PARA` Method for Models
-
-The `Models` directory, which acts as the data and knowledge hub for the `Seed` Project, is further structured using the PARA method following an action-oriented structure:
-
-```text
-Models/
-├── 0. Inbox/       # For capturing all new, unprocessed information
-├── 1. Projects/    # Actionable projects with defined goals
-├── 2. Knowledge/   # (Areas) Long-term topics of interest
-├── 3. Resources/   # Topic-based reference materials
-├── 4. Archives/    # Completed or inactive items
-└── Meta/           # Project metadata and state
-```
+-   **`Core`:** Contains the stable, foundational elements of the system. This public repository is part of the `Core`.
+-   **`Projects`:** A collection of modular "plugins" that extend the `Core`. 
 
 ### Locating This Repository
 
-Putting it all together, this public repository (`cursor-rules-to-instructions/`) is a `View` within the `Seed` Project.
+Putting it all together, this public repository (`cursor-rules-to-instructions/`) is a `Method` within the `Core` folder.
 
 ```text
-Projects/
-└── Seed/
-    ├── Controllers/
-    ├── Models/
-    │   ├── 0. Inbox/
-    │   ├── 1. Projects/
-    │   ├── 2. Knowledge/
-    │   ├── 3. Resources/
-    │   ├── 4. Archives/
-    │   └── Meta/
-    └── Views/
-        └── Public Repositories/
-            └── IDE/     # Grouping
-                ├── cursor-rules-to-instructions/  # This Public Repo
-                └── private/                     # Assets tracked by the parent framework
+Core/
+└─ Controllers/
+   └── Methods/
+        └── Operations/
+            └── Scripts/
+                └── IDE/
+                    └── Convert Rules to Instructions/
+                        ├── cursor-rules-to-instructions/  # This Public Repo
+                        └── private/                       # Assets tracked by the parent framework
 ```
 
-### Level 4: Split Repository Pattern
+### Level 2: Split Repository Pattern
 
-This path reveals a **Public-Private Pattern** at the `IDE` level, which separates the public-facing code (the submodule) from its private development assets (`private/`). These private assets, typically including `.cursor/`, `.specstory/`, `inbox/`, `memory-bank/` (and confidential files) are thus allowed to be informed and tracked by the parent framework, not the public submodule.
+This path reveals a **Public-Private Pattern** at the `Convert Rules to Instructions` level, which separates the public-facing code (the submodule) from its private development assets (`private/`). These private assets, typically including `.cursor/`, `.specstory/`, `inbox/`, `memory-bank/` (and confidential files) are thus allowed to be informed and tracked by the parent framework, not the public submodule.
 
 ```text
-IDE/                     # Grouping
-├── cursor-rules-to-instructions/                  # This Public Repo (contains symlinks to the private assets)
+Convert Rules to Instructions/                   # Grouping
+├── cursor-rules-to-instructions/                # This Public Repo (contains symlinks to the private assets)
 │   ├── .cursor -> ../private/.cursor/
 │   ├── .specstory -> ../private/.specstory/
 │   ├── inbox -> ../private/inbox/
