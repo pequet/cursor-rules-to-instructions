@@ -286,9 +286,6 @@ convert_single_file() {
         print_warning "SKIPPED auto-generated file: ${basename_source} (content should be migrated to numbered rules)"
         log_message "NOTICE" "SKIPPED auto-generated file: ${basename_source} (content should be migrated to numbered rules)"
         
-        # Create a minimal file noting that it was skipped
-        echo "WARN: SKIPPED auto-generated file: derived-cursor-rules.mdc" > "${dest_file}"
-        
         ((FILES_SKIPPED++))
         return 0
     fi
