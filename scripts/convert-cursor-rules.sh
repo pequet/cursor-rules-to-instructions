@@ -8,13 +8,6 @@ set -o pipefail
 # --- Logging Toggle (disabled until log dir ensured) ---
 LOGGING_ENABLED=0
 
-# --- Utility Scripts ---
-# Source utility functions
-# shellcheck source=scripts/utils/logging_utils.sh
-source "$(dirname "$0")/utils/logging_utils.sh"
-# shellcheck source=scripts/utils/messaging_utils.sh
-source "$(dirname "$0")/utils/messaging_utils.sh"
-
 # █   █  Cursor Rules to Instructions: Rule Conversion Tool
 #  █ █   Version: 1.0.0
 #  █ █   Author: Benjamin Pequet
@@ -41,6 +34,21 @@ source "$(dirname "$0")/utils/messaging_utils.sh"
 # Support the Project:
 #   - Buy Me a Coffee: https://buymeacoffee.com/pequet
 #   - GitHub Sponsors: https://github.com/sponsors/pequet
+
+
+# --- Global Variables ---
+# Resolve the true script directory, following symlinks
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+  DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+done
+SCRIPT_DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
+
+# --- Utility Scripts ---
+source "${SCRIPT_DIR}/utils/logging_utils.sh"
+source "${SCRIPT_DIR}/utils/messaging_utils.sh"
 
 # --- Configuration ---
 # Processing statistics
