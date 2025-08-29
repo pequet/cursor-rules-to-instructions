@@ -1,54 +1,73 @@
-# Convert Cursor Rules to GitHub Copilot Instructions
+# IDE Rules Synchronizer
 
-> In the beginning, Cursor created an AI-powered IDE and said "Let there be unlimited requests." And developers saw that it was good. They invested time creating custom rules, perfecting workflows, and paying subscription fees.
-> Then Cursor declared that "unlimited" actually meant "500 requests per month" and that many included features would now count as requests. And the developers were sad.
-> This script will translate your Cursor rules into GitHub Copilot instructions faster than you can say "my subscription was devalued again!"
+> Maintain consistent AI guidance across multiple AI coding assistants from a Single Source of Truth (SSoT).
 
-A utility script that converts your existing Cursor IDE rules into GitHub Copilot instructions, allowing you to preserve your custom AI assistant training when transitioning between tools.
+A utility script that synchronizes your master rules to multiple AI coding assistant formats, allowing you to maintain a single source of truth for your AI assistant configurations.
 
-Whether you're exploring alternatives due to recent changes in Cursor's pricing model or simply want to use your rules across multiple platforms, this script helps you maintain consistency in your AI-assisted development workflow.
+Whether you're using multiple AI tools like GitHub Copilot, Cursor, Claude, or Gemini, this script helps you maintain consistency in your AI-assisted development workflow.
 
 ## Features
 
-- **Simple conversion**: Transforms `.cursor/rules/*.mdc` files into `.github/instructions/*.instructions.md` files
-- **Preserves formatting**: Maintains your original rule structure and content
-- **Quick setup**: One command to convert your entire project
-- **Cross-platform**: Works on macOS and Linux systems
+- **Single Source of Truth**: Maintain all your rules in one directory (`master-rules/`)
+- **Multi-Target Support**: Convert to multiple formats simultaneously:
+  - **Cursor**: `.cursor/rules/*.mdc`
+  - **GitHub Copilot**: `.github/instructions/*.instructions.md`
+  - **Claude**: Single file concatenation to `CLAUDE.md`
+  - **Gemini**: Simple markdown format in `GEMINI.md`
+- **Flexible Configuration**: Choose which targets to generate
+- **Preserves Structure**: Maintains your original rule structure and content
+- **Quick Setup**: One command to synchronize your entire project
 
 ## Usage
 
-Convert your Cursor rules by running the script with your project path:
+Synchronize your master rules by running the script with your project path:
 
 ```bash
-./convert-cursor-rules.sh /path/to/my/project
+./sync-ide-rules.sh /path/to/my/project
 ```
 
-**Examples:**
+This will convert all rules from `master-rules/` to all supported targets.
+
+**Advanced Usage:**
 
 ```bash
-# Convert rules in the current directory
-./convert-cursor-rules.sh .
+# Specify a custom source directory
+./sync-ide-rules.sh /path/to/my/project --from my-custom-rules
 
-# Convert rules in a specific project
-./convert-cursor-rules.sh /path/to/my/project
+# Convert only to specific targets
+./sync-ide-rules.sh /path/to/my/project --to cursor,github
 ```
 
-The script will automatically:
-1. Scan for `.cursor/rules/*.mdc` files in your project
-2. Create the `.github/instructions/` directory if it doesn't exist
-3. Convert each rule file to the appropriate GitHub Copilot instruction format
-4. Preserve your original files (no data is lost)
+Available targets:
+- `cursor`: Generates `.cursor/rules/*.mdc` files
+- `github`: Generates `.github/instructions/*.instructions.md` files
+- `claude`: Generates a single `CLAUDE.md` file
+- `gemini`: Generates a single `GEMINI.md` file
+
+## Source File Format
+
+Place your master rule files in the `master-rules/` directory (or a custom directory specified with `--from`):
+
+```markdown
+---
+description: "A description of the rule's purpose"
+# Any other metadata fields
+---
+
+# Rule Title
+
+Your rule content here...
+```
 
 ## Requirements
 
 - **Bash shell** (macOS or Linux)
-- **Existing Cursor rules** in your project (`.cursor/rules/*.mdc` files)
-- A sense of humor about subscription services
+- **Standard Unix utilities** (find, sed, awk, grep)
 
 ## Installation
 
 1. Clone this repository or download the script
-2. Make the script executable: `chmod +x convert-cursor-rules.sh`
+2. Make the script executable: `chmod +x scripts/sync-ide-rules.sh`
 3. Run the script on your project
 
 ## License

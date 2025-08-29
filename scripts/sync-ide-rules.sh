@@ -8,19 +8,21 @@ set -o pipefail
 # --- Logging Toggle (disabled until log dir ensured) ---
 LOGGING_ENABLED=0
 
-# █   █  Cursor Rules to Instructions: Rule Conversion Tool
-#  █ █   Version: 1.0.0
+# █   █  IDE Rules Synchronizer: Multi-Target Rule Conversion Tool
+#  █ █   Version: 2.0.0
 #  █ █   Author: Benjamin Pequet
 # █   █  GitHub: https://github.com/pequet/cursor-rules-to-instructions/
 #
 # Purpose:
-#   Converts Cursor IDE rules (.mdc files) to GitHub Copilot instructions (.instructions.md files).
+#   Synchronizes master rules to multiple AI coding assistant formats.
+#   Supports converting to Cursor (.mdc), GitHub Copilot (.instructions.md), Claude (CLAUDE.md), and Gemini (GEMINI.md).
 #   Facilitates seamless migration between AI coding assistants while maintaining all rule functionality.
 #
 # Usage:
-#   ./convert-cursor-rules.sh [source_dir] [dest_dir]
-#   source_dir: Directory containing .mdc files (default: current directory)
-#   dest_dir: Directory for .instructions.md files (default: .github/instructions)
+#   ./sync-ide-rules.sh <project_root_path> [--from <source_dir>] [--to <targets>]
+#   project_root_path: Path to the project root
+#   --from <source_dir>: Directory containing master rule files (default: master-rules)
+#   --to <targets>: Comma-separated list of targets (cursor,github,claude,gemini) (default: all)
 #
 # Dependencies:
 #   - Bash 4.0+
@@ -29,6 +31,7 @@ LOGGING_ENABLED=0
 #   - scripts/utils/logging_utils.sh
 #
 # Changelog:
+#   2.0.0 - 2025-08-29 - Major refactoring to support multiple targets
 #   1.0.0 - 2025-08-17 - Initial release
 #
 # Support the Project:
@@ -80,16 +83,19 @@ validate_dependencies() {
 }
 
 show_usage() {
-    echo "Usage: $0 <project_root_path>"
+    echo "Usage: $0 <project_root_path> [--from <source_dir>] [--to <targets>]"
     echo ""
-    echo "Convert Cursor .mdc rules to GitHub Copilot .instructions.md format"
+    echo "Synchronize master rules to multiple AI coding assistant formats"
     echo ""
     echo "Arguments:"
-    echo "  project_root_path    Path to the project root containing .cursor/rules/ directory"
+    echo "  project_root_path    Path to the project root"
+    echo "  --from <source_dir>  Directory containing master rule files (default: master-rules)"
+    echo "  --to <targets>       Comma-separated list of targets (cursor,github,claude,gemini) (default: all)"
     echo ""
-    echo "Example:"
+    echo "Examples:"
     echo "  $0 /path/to/my/project"
-    echo "  $0 ."
+    echo "  $0 /path/to/my/project --from master-rules --to cursor,github"
+    echo "  $0 . --to claude,gemini"
 }
 
 # *
@@ -403,9 +409,9 @@ find_and_convert_files() {
 
 print_summary() {    
     if [[ ${ERRORS_COUNT} -eq 0 ]]; then
-        print_completed "Conversion complete!"
+        print_completed "Synchronization complete!"
     else
-        print_error "Conversion completed with ${ERRORS_COUNT} errors."
+        print_error "Synchronization completed with ${ERRORS_COUNT} errors."
     fi
     
     print_info "Converted: ${FILES_CONVERTED} files"
@@ -418,71 +424,176 @@ print_summary() {
     
     # Add next steps for the user
     print_info "Next steps:"
-    print_info "1. Review the converted files in .github/instructions"
-    print_info "2. Test with GitHub Copilot in VS Code"
-    print_info "3. Adjust applyTo patterns if needed"
-    print_info "4. Consider adding a single .github/copilot-instructions.md for global rules"
+    print_info "1. Review the converted files in their respective locations:"
+    print_info "   - Cursor: .cursor/rules/"
+    print_info "   - GitHub Copilot: .github/instructions/"
+    print_info "   - Claude: CLAUDE.md"
+    print_info "   - Gemini: GEMINI.md"
+    print_info "2. Test with your preferred AI coding assistants"
+    print_info "3. Make any necessary adjustments to the rule files"
 }
 
 main() {
-    print_header "Cursor Rules to Instructions Converter v1.0"
+    print_header "IDE Rules Synchronizer v2.0"
     ensure_log_directory
     enable_logging
     
-    # Validate arguments
-    if [[ $# -ne 1 ]]; then
+    # Default values
+    local source_dir="master-rules"
+    local targets="cursor,github,claude,gemini"
+    
+    # Parse arguments
+    if [[ $# -lt 1 ]]; then
         print_error "Missing required project root path argument"
         echo ""
         show_usage
         exit 1
     fi
     
+    # Help flag check
     if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
         show_usage
         exit 0
     fi
     
+    # Get project root path (first argument)
+    local project_root="$1"
+    shift
+    
+    # Parse optional arguments
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --from)
+                source_dir="$2"
+                shift 2
+                ;;
+            --to)
+                targets="$2"
+                shift 2
+                ;;
+            *)
+                print_error "Unknown option: $1"
+                show_usage
+                exit 1
+                ;;
+        esac
+    done
+    
     # Get and validate project root path
-    local project_root
-    project_root="$(cd "$1" 2>/dev/null && pwd)" || {
-        print_error "Invalid project root path: $1"
+    project_root="$(cd "$project_root" 2>/dev/null && pwd)" || {
+        print_error "Invalid project root path: $project_root"
         print_error "The specified path does not exist or is not accessible."
         exit 1
     }
     
-    # Configuration - relative to project root
-    local cursor_rules_dir="$project_root/.cursor/rules"
-    local github_instructions_dir="$project_root/.github/instructions"
-    
-    # Show relative paths for readability
-    local relative_project="${project_root#${PWD}/}"
-    [[ "$relative_project" == "$project_root" ]] && relative_project="$project_root"
-    local relative_source="${cursor_rules_dir#${PWD}/}"
-    [[ "$relative_source" == "$cursor_rules_dir" ]] && relative_source="$cursor_rules_dir"
-    local relative_dest="${github_instructions_dir#${PWD}/}"
-    [[ "$relative_dest" == "$github_instructions_dir" ]] && relative_dest="$github_instructions_dir"
-    
-    print_info "Converting .mdc files to .instructions.md format"
-    print_info "Project root: $relative_project"
-    print_info "Source directory: $relative_source"
-    print_info "Destination directory: $relative_dest"
-    
-    # Check if cursor rules directory exists
-    if [[ ! -d "$cursor_rules_dir" ]]; then
-        print_error "Cursor rules directory not found: $relative_source"
-        print_error "Ensure your project has a .cursor/rules/ directory with .mdc files."
-        exit 1
-    fi
+    # Full path to source directory
+    local source_dir_path="$project_root/$source_dir"
     
     # Validate environment
     validate_dependencies
     
-    # Log conversion start
-    log_message "INFO" "Starting Cursor rules to GitHub Copilot instructions conversion"
-    log_message "INFO" "Project root: $project_root"
+    # Show relative paths for readability
+    local relative_project="${project_root#${PWD}/}"
+    [[ "$relative_project" == "$project_root" ]] && relative_project="$project_root"
+    local relative_source="${source_dir_path#${PWD}/}"
+    [[ "$relative_source" == "$source_dir_path" ]] && relative_source="$source_dir_path"
     
-    # Perform conversion
-    find_and_convert_files "$cursor_rules_dir" "$github_instructions_dir"
+    print_info "Synchronizing master rules to multiple targets"
+    print_info "Project root: $relative_project"
+    print_info "Source directory: $relative_source"
+    
+    # Check if source directory exists
+    if [[ ! -d "$source_dir_path" ]]; then
+        print_error "Source directory not found: $relative_source"
+        print_error "Ensure your project has a $source_dir/ directory with rule files."
+        exit 1
+    fi
+    
+    # Log conversion start
+    log_message "INFO" "Starting master rules synchronization"
+    log_message "INFO" "Project root: $project_root"
+    log_message "INFO" "Source directory: $source_dir_path"
+    log_message "INFO" "Target formats: $targets"
+    
+    # Convert targets string to array
+    IFS=',' read -ra target_array <<< "$targets"
+    
+    # Process each target
+    local conversion_error=0
+    
+    for target in "${target_array[@]}"; do
+        case "$target" in
+            cursor)
+                print_step "Processing target: Cursor"
+                local cursor_rules_dir="$project_root/.cursor/rules"
+                
+                # Convert files from source to Cursor format
+                # TODO: Add function to convert source files to .mdc format
+                
+                print_info "Target directory: ${cursor_rules_dir#${PWD}/}"
+                
+                # For now, we'll just copy the files as they are
+                # In a real implementation, you'd want to convert the frontmatter properly
+                mkdir -p "$cursor_rules_dir"
+                
+                # Find all source files
+                while IFS= read -r -d '' file; do
+                    local basename_file=$(basename "$file")
+                    local dest_file="$cursor_rules_dir/${basename_file%.md}.mdc"
+                    
+                    print_info "Converting ${basename_file} → ${dest_file#${PWD}/}"
+                    
+                    # Process file
+                    # For now, just copy the file with extension change
+                    cp "$file" "$dest_file"
+                    ((FILES_CONVERTED++))
+                done < <(find "$source_dir_path" -name "*.md" -type f -print0)
+                ;;
+            
+            github)
+                print_step "Processing target: GitHub Copilot"
+                local github_instructions_dir="$project_root/.github/instructions"
+                
+                print_info "Target directory: ${github_instructions_dir#${PWD}/}"
+                
+                # Find all source files
+                mkdir -p "$github_instructions_dir"
+                
+                while IFS= read -r -d '' file; do
+                    local basename_file=$(basename "$file")
+                    local dest_file="$github_instructions_dir/${basename_file%.md}.instructions.md"
+                    
+                    print_info "Converting ${basename_file} → ${dest_file#${PWD}/}"
+                    
+                    # Process file - for now a simple copy with extension change
+                    # In a real implementation, you'd convert the frontmatter properly
+                    cp "$file" "$dest_file"
+                    ((FILES_CONVERTED++))
+                done < <(find "$source_dir_path" -name "*.md" -type f -print0)
+                ;;
+            
+            claude)
+                print_step "Processing target: Claude"
+                local claude_file="$project_root/CLAUDE.md"
+                
+                # Create Claude file
+                create_claude_file "$source_dir_path" "$claude_file"
+                ;;
+            
+            gemini)
+                print_step "Processing target: Gemini"
+                local gemini_file="$project_root/GEMINI.md"
+                
+                # Create Gemini file
+                create_gemini_file "$source_dir_path" "$gemini_file"
+                ;;
+            
+            *)
+                print_warning "Unknown target: $target (skipping)"
+                ((FILES_SKIPPED++))
+                ;;
+        esac
+    done
     
     # Show results
     print_footer
@@ -490,12 +601,197 @@ main() {
     
     # Log completion
     if [[ ${ERRORS_COUNT} -eq 0 ]]; then
-        log_message "INFO" "Conversion completed successfully"
+        log_message "INFO" "Synchronization completed successfully"
         exit 0
     else
-        log_message "ERROR" "Conversion completed with ${ERRORS_COUNT} errors"
+        log_message "ERROR" "Synchronization completed with ${ERRORS_COUNT} errors"
         exit 1
     fi
+}
+
+# Create a single Claude.md file from all rules
+create_claude_file() {
+    local source_dir="$1"
+    local dest_file="$2"
+    
+    print_step "Creating Claude file: ${dest_file#${PWD}/}"
+    
+    # Find all rule files
+    local rule_files=()
+    while IFS= read -r -d '' file; do
+        rule_files+=("$file")
+    done < <(find "${source_dir}" -name "*.md" -type f | sort -n)
+    
+    if [[ ${#rule_files[@]} -eq 0 ]]; then
+        print_warning "No rule files found in: ${source_dir#${PWD}/}"
+        return 0
+    fi
+    
+    print_info "Found ${#rule_files[@]} rule file(s) to process"
+    
+    # Create the file with header
+    cat > "$dest_file" << EOF
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Rules
+
+EOF
+    
+    # Process each rule file
+    for rule_file in "${rule_files[@]}"; do
+        ((FILES_PROCESSED++))
+        local basename_rule
+        basename_rule=$(basename "${rule_file}")
+        
+        print_info "Adding ${basename_rule} to Claude file"
+        
+        # Extract title from file (first heading)
+        local title
+        title=$(grep -m 1 "^# " "$rule_file" | sed 's/^# //')
+        
+        # If no title found, use filename without extension
+        if [[ -z "$title" ]]; then
+            title="${basename_rule%.md}"
+        fi
+        
+        # Add rule to Claude file
+        echo "### ${title}" >> "$dest_file"
+        echo "" >> "$dest_file"
+        
+        # Extract content after frontmatter
+        local in_frontmatter=false
+        local frontmatter_count=0
+        
+        while IFS= read -r line; do
+            if [[ "$line" == "---" ]]; then
+                if [[ "$in_frontmatter" == false ]]; then
+                    in_frontmatter=true
+                    ((frontmatter_count++))
+                else
+                    in_frontmatter=false
+                    ((frontmatter_count++))
+                fi
+                continue
+            fi
+            
+            # Skip frontmatter content
+            if [[ "$in_frontmatter" == true ]]; then
+                continue
+            fi
+            
+            # Skip initial heading (already used as section title)
+            if [[ "$frontmatter_count" -eq 2 && "$line" =~ ^#[[:space:]] ]]; then
+                frontmatter_count=3  # Mark that we've processed the heading
+                continue
+            fi
+            
+            # Add all other content
+            echo "$line" >> "$dest_file"
+        done < "$rule_file"
+        
+        # Add separator between rules
+        echo "" >> "$dest_file"
+        echo "---" >> "$dest_file"
+        echo "" >> "$dest_file"
+        
+        ((FILES_CONVERTED++))
+    done
+    
+    print_info "Claude file created successfully: ${dest_file#${PWD}/}"
+    log_message "SUCCESS" "Created Claude file: $dest_file with ${#rule_files[@]} rules"
+}
+
+# Create a single Gemini.md file from all rules
+create_gemini_file() {
+    local source_dir="$1"
+    local dest_file="$2"
+    
+    print_step "Creating Gemini file: ${dest_file#${PWD}/}"
+    
+    # Find all rule files
+    local rule_files=()
+    while IFS= read -r -d '' file; do
+        rule_files+=("$file")
+    done < <(find "${source_dir}" -name "*.md" -type f | sort -n)
+    
+    if [[ ${#rule_files[@]} -eq 0 ]]; then
+        print_warning "No rule files found in: ${source_dir#${PWD}/}"
+        return 0
+    fi
+    
+    print_info "Found ${#rule_files[@]} rule file(s) to process"
+    
+    # Create the file with header
+    cat > "$dest_file" << EOF
+# GEMINI.md
+
+This file provides guidance to Gemini when working with code in this repository.
+
+EOF
+    
+    # Process each rule file
+    for rule_file in "${rule_files[@]}"; do
+        ((FILES_PROCESSED++))
+        local basename_rule
+        basename_rule=$(basename "${rule_file}")
+        
+        print_info "Adding ${basename_rule} to Gemini file"
+        
+        # Extract title from file (first heading)
+        local title
+        title=$(grep -m 1 "^# " "$rule_file" | sed 's/^# //')
+        
+        # If no title found, use filename without extension
+        if [[ -z "$title" ]]; then
+            title="${basename_rule%.md}"
+        fi
+        
+        # Add rule to Gemini file with H2 heading
+        echo "## ${title}" >> "$dest_file"
+        echo "" >> "$dest_file"
+        
+        # Extract content after frontmatter
+        local in_frontmatter=false
+        local frontmatter_count=0
+        
+        while IFS= read -r line; do
+            if [[ "$line" == "---" ]]; then
+                if [[ "$in_frontmatter" == false ]]; then
+                    in_frontmatter=true
+                    ((frontmatter_count++))
+                else
+                    in_frontmatter=false
+                    ((frontmatter_count++))
+                fi
+                continue
+            fi
+            
+            # Skip frontmatter content
+            if [[ "$in_frontmatter" == true ]]; then
+                continue
+            fi
+            
+            # Skip initial heading (already used as section title)
+            if [[ "$frontmatter_count" -eq 2 && "$line" =~ ^#[[:space:]] ]]; then
+                frontmatter_count=3  # Mark that we've processed the heading
+                continue
+            fi
+            
+            # Add all other content
+            echo "$line" >> "$dest_file"
+        done < "$rule_file"
+        
+        # Add extra newlines between rules
+        echo "" >> "$dest_file"
+        echo "" >> "$dest_file"
+        
+        ((FILES_CONVERTED++))
+    done
+    
+    print_info "Gemini file created successfully: ${dest_file#${PWD}/}"
+    log_message "SUCCESS" "Created Gemini file: $dest_file with ${#rule_files[@]} rules"
 }
 
 # --- Script Entrypoint ---

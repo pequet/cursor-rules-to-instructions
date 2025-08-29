@@ -6,8 +6,8 @@ set -u
 set -o pipefail
 
 # Author: Benjamin Pequet
-# Purpose: Installs the convert-cursor-rules.sh script for global use.
-# Project: https://github.com/pequet/cursor-rules-to-instructions
+# Purpose: Installs the sync-ide-rules.sh script for global use.
+# Project: https://github.com/pequet/ide-rules-synchronizer
 # Refer to main project for detailed docs.
 
 # --- Source Utilities ---
@@ -22,11 +22,11 @@ LOG_FILE_PATH="${INSTALL_SCRIPT_DIR}/logs/install.log"
 # --- Main Installation Logic ---
 main() {
     ensure_log_directory
-    print_header "Core Privatize Folders Installer"
+    print_header "IDE Rules Synchronizer Installer"
 
     # --- Define Paths ---
-    local SOURCE_SCRIPT_NAME="privatize-folders.sh"
-    local DEST_SCRIPT_NAME="core-privatize-folders.sh"
+    local SOURCE_SCRIPT_NAME="sync-ide-rules.sh"
+    local DEST_SCRIPT_NAME="core-sync-ide-rules.sh"
     local DEST_DIR="/usr/local/bin"
     local SOURCE_SCRIPT_PATH="${INSTALL_SCRIPT_DIR}/scripts/${SOURCE_SCRIPT_NAME}"
     local DEST_PATH="${DEST_DIR}/${DEST_SCRIPT_NAME}"
