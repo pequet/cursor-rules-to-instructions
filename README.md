@@ -10,20 +10,23 @@ Whether you're using multiple AI tools like GitHub Copilot, Cursor, Claude, or G
 
 - **Single Source of Truth**: Maintain all your rules in one directory (`master-rules/`)
 - **Multi-Target Support**: Convert to multiple formats simultaneously:
-  - **Cursor**: `.cursor/rules/*.mdc`
+  - **Cursor IDE**: `.cursor/rules/*.mdc`
   - **GitHub Copilot**: `.github/instructions/*.instructions.md`
-  - **Claude**: Single file concatenation to `CLAUDE.md`
-  - **Gemini**: Simple markdown format in `GEMINI.md`
+  - **Claude Code**: Template-based file with rules appended as `CLAUDE.md`
+  - **Gemini CLI**: Template-based file with rules appended as `GEMINI.md`
+  - **Codex CLI**: Generated documentation files (`AGENTS.md`, `ARCHITECTURE.md`, `RULES.md`)
 - **Flexible Configuration**: Choose which targets to generate
 - **Preserves Structure**: Maintains your original rule structure and content
 - **Quick Setup**: One command to synchronize your entire project
+- **File Backups**: Automatically creates backups of existing files before overwriting
+- **macOS Compatible**: Works with the default Bash 3.2+ shipped with macOS
 
 ## Usage
 
-Synchronize your master rules by running the script with your project path:
+Synchronize your master rules by running the script:
 
 ```bash
-./sync-ide-rules.sh /path/to/my/project
+./scripts/sync-ide-rules.sh --from master-rules --to cursor,github,claude,gemini,docs
 ```
 
 This will convert all rules from `master-rules/` to all supported targets.
@@ -31,44 +34,58 @@ This will convert all rules from `master-rules/` to all supported targets.
 **Advanced Usage:**
 
 ```bash
-# Specify a custom source directory
-./sync-ide-rules.sh /path/to/my/project --from my-custom-rules
-
 # Convert only to specific targets
-./sync-ide-rules.sh /path/to/my/project --to cursor,github
+./scripts/sync-ide-rules.sh --to claude,gemini
+
+# Only update documentation files
+./scripts/sync-ide-rules.sh --to docs
 ```
 
 Available targets:
-- `cursor`: Generates `.cursor/rules/*.mdc` files
-- `github`: Generates `.github/instructions/*.instructions.md` files
-- `claude`: Generates a single `CLAUDE.md` file
-- `gemini`: Generates a single `GEMINI.md` file
+- `cursor`: Generates `.cursor/rules/*.mdc` files (Cursor IDE)
+- `github`: Generates `.github/instructions/*.instructions.md` files (GitHub Copilot)
+- `claude`: Generates a single `CLAUDE.md` file with template content plus rules (Claude Code)
+- `gemini`: Generates a single `GEMINI.md` file with template content plus rules (Gemini CLI)
+- `docs`: Copies static documentation files (`AGENTS.md`, `ARCHITECTURE.md`, `RULES.md`) (Codex CLI)
+
+## Project Structure
+
+- `master-rules/`: Directory containing source rule files
+- `assets/`: Templates for generating target files
+  - `AGENTS.md`: Quick-start guide template
+  - `ARCHITECTURE.md`: Architecture documentation template
+  - `RULES.md`: Rules index template
+  - `CLAUDE.md`: Claude documentation base template
+  - `GEMINI.md`: Gemini documentation base template
+- `scripts/`: Utility scripts
+  - `sync-ide-rules.sh`: Main synchronization script
+  - `utils/`: Helper utilities
 
 ## Source File Format
 
-Place your master rule files in the `master-rules/` directory (or a custom directory specified with `--from`):
+Place your master rule files in the `master-rules/` directory with proper markdown formatting:
 
 ```markdown
 ---
-description: "A description of the rule's purpose"
-# Any other metadata fields
+description: "A brief description of this rule"
+globs: "*.js,*.ts"  # Files this rule applies to (for Cursor)
+alwaysApply: false  # Whether to apply to all files (for Cursor)
 ---
 
 # Rule Title
 
-Your rule content here...
+Rule content goes here...
 ```
 
-## Requirements
+## Template Files
 
-- **Bash shell** (macOS or Linux)
-- **Standard Unix utilities** (find, sed, awk, grep)
+The `assets/` directory should contain template files for documentation and AI assistant files:
 
-## Installation
-
-1. Clone this repository or download the script
-2. Make the script executable: `chmod +x scripts/sync-ide-rules.sh`
-3. Run the script on your project
+- `AGENTS.md`: Quick-start guide for humans and AI agents (Codex CLI - optimized for 200-400 words)
+- `ARCHITECTURE.md`: System architecture and component documentation  
+- `RULES.md`: Index of all rules and their derived implementations
+- `CLAUDE.md`: Base template for Claude Code documentation (aggregated single file approach)
+- `GEMINI.md`: Base template for Gemini CLI documentation (comprehensive single file approach)
 
 ## License
 
@@ -80,6 +97,3 @@ If you find this tool helpful, consider supporting its development:
 
 - [Buy Me a Coffee](https://buymeacoffee.com/pequet)
 - [GitHub Sponsors](https://github.com/sponsors/pequet)
-
-🧑‍💻
-

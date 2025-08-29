@@ -29,12 +29,18 @@ VENV/
 
 # IDE specific (including symlinks)
 # Should be commented out i.e. included in the boilerplate but **usually not** in the project
+AGENTS.md  # Uncommented by [core-privatize-folders]
+CLAUDE.md  # Uncommented by [core-privatize-folders]
+.claude  # Uncommented by [core-privatize-folders]
+.codex  # Uncommented by [core-privatize-folders]
 .cursor  # Uncommented by [core-privatize-folders]
 .github  # Uncommented by [core-privatize-folders]
-# .vscode
+.vscode  # Uncommented by [core-privatize-folders]
+.claude/  # Uncommented by [core-privatize-folders]
+.codex/  # Uncommented by [core-privatize-folders]
 .cursor/  # Uncommented by [core-privatize-folders]
 .github/  # Uncommented by [core-privatize-folders]
-# .vscode/
+.vscode/  # Uncommented by [core-privatize-folders]
 
 # Build artifacts
 dist/
@@ -75,4 +81,5 @@ logs/
 
 # Memory Bank 
 # Should be commented out i.e. included in the boilerplate but **usually not** in the project
+memory-bank  # Uncommented by [core-privatize-folders]
 memory-bank/  # Uncommented by [core-privatize-folders]

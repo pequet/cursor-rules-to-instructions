@@ -9,28 +9,29 @@ set -o pipefail
 LOGGING_ENABLED=0
 
 # █   █  IDE Rules Synchronizer: Multi-Target Rule Conversion Tool
-#  █ █   Version: 2.0.0
+#  █ █   Version: 3.0.0
 #  █ █   Author: Benjamin Pequet
 # █   █  GitHub: https://github.com/pequet/cursor-rules-to-instructions/
 #
 # Purpose:
 #   Synchronizes master rules to multiple AI coding assistant formats.
-#   Supports converting to Cursor (.mdc), GitHub Copilot (.instructions.md), Claude (CLAUDE.md), and Gemini (GEMINI.md).
-#   Facilitates seamless migration between AI coding assistants while maintaining all rule functionality.
+#   Generates documentation files (AGENTS.md, ARCHITECTURE.md, RULES.md) and 
+#   AI-specific files (CLAUDE.md, GEMINI.md) from templates in assets/.
+#   Creates individual rule files for different IDE assistants (.cursor/rules/*.mdc, .github/instructions/*.instructions.md)
 #
 # Usage:
-#   ./sync-ide-rules.sh <project_root_path> [--from <source_dir>] [--to <targets>]
-#   project_root_path: Path to the project root
+#   ./sync-ide-rules.sh --from <source_dir> --to <targets>
 #   --from <source_dir>: Directory containing master rule files (default: master-rules)
-#   --to <targets>: Comma-separated list of targets (cursor,github,claude,gemini) (default: all)
+#   --to <targets>: Comma-separated list of targets (cursor,github,claude,gemini,docs) (default: all)
 #
 # Dependencies:
-#   - Bash 4.0+
+#   - Bash 3.2+ (compatible with macOS default bash)
 #   - Standard Unix utilities (find, sed, awk, grep)
 #   - scripts/utils/messaging_utils.sh
 #   - scripts/utils/logging_utils.sh
 #
 # Changelog:
+#   3.0.0 - 2025-08-29 - Refactored to support multi-agent docs and a simpler approach
 #   2.0.0 - 2025-08-29 - Major refactoring to support multiple targets
 #   1.0.0 - 2025-08-17 - Initial release
 #
@@ -48,6 +49,7 @@ while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symli
   [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
 done
 SCRIPT_DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
+PROJECT_ROOT="$( cd -P "$( dirname "$SCRIPT_DIR" )" >/dev/null 2>&1 && pwd )"
 
 # --- Utility Scripts ---
 source "${SCRIPT_DIR}/utils/logging_utils.sh"
@@ -60,10 +62,12 @@ declare -i FILES_CONVERTED=0
 declare -i FILES_SKIPPED=0
 declare -i ERRORS_COUNT=0
 
+# --- Asset Paths ---
+ASSETS_DIR="${PROJECT_ROOT}/assets"
+
 # --- Logging Configuration ---
-# The script name can be used to generate a log file name
 SCRIPT_NAME=$(basename "$0" .sh)
-LOG_FILE_PATH="scripts/logs/${SCRIPT_NAME}.log"
+LOG_FILE_PATH="${SCRIPT_DIR}/logs/${SCRIPT_NAME}.log"
 
 # --- Function Definitions ---
 
@@ -83,324 +87,385 @@ validate_dependencies() {
 }
 
 show_usage() {
-    echo "Usage: $0 <project_root_path> [--from <source_dir>] [--to <targets>]"
+    echo "Usage: $0 [--from <source_dir>] [--to <targets>]"
     echo ""
     echo "Synchronize master rules to multiple AI coding assistant formats"
     echo ""
     echo "Arguments:"
-    echo "  project_root_path    Path to the project root"
     echo "  --from <source_dir>  Directory containing master rule files (default: master-rules)"
-    echo "  --to <targets>       Comma-separated list of targets (cursor,github,claude,gemini) (default: all)"
+    echo "  --to <targets>       Comma-separated list of targets (cursor,github,claude,gemini,docs) (default: all)"
     echo ""
     echo "Examples:"
-    echo "  $0 /path/to/my/project"
-    echo "  $0 /path/to/my/project --from master-rules --to cursor,github"
-    echo "  $0 . --to claude,gemini"
+    echo "  $0 --from master-rules --to cursor,github"
+    echo "  $0 --to claude,gemini"
+    echo "  $0 --to docs"
 }
 
-# *
-# * File Processing Functions
-# *
-
-# Convert glob patterns from Cursor to GitHub format
-convert_glob() {
-    local cursor_glob="$1"
+backup_file() {
+    local file_path="$1"
     
-    # Handle empty globs or "[]" (empty array)
-    if [[ -z "$cursor_glob" || "$cursor_glob" == "[]" ]]; then
-        echo "[]"
-        return
-    fi
-    
-    # Special case: if it's already the correct format, return as-is
-    if [[ "$cursor_glob" == "*,**/*" ]]; then
-        echo "*,**/*"
-        return
-    fi
-    
-    # Check if it contains commas (multiple patterns)
-    if [[ "$cursor_glob" == *","* ]]; then
-        # Split by comma, convert each pattern, and rejoin
-        local converted_patterns=()
-        IFS=',' read -ra patterns <<< "$cursor_glob"
-        for pattern in "${patterns[@]}"; do
-            # Trim whitespace
-            pattern="${pattern#"${pattern%%[![:space:]]*}"}"  # Remove leading whitespace
-            pattern="${pattern%"${pattern##*[![:space:]]}"}"  # Remove trailing whitespace
-            # Convert individual pattern
-            local converted=$(convert_single_glob "$pattern")
-            converted_patterns+=("$converted")
-        done
-        # Join with commas
-        local result
-        printf -v result '%s,' "${converted_patterns[@]}"
-        echo "${result%,}"
-    else
-        # Single pattern
-        convert_single_glob "$cursor_glob"
-    fi
-}
-
-# Convert a single glob pattern
-convert_single_glob() {
-    local pattern="$1"
-    
-    case "$pattern" in
-        *.cursor/rules/**/*.mdc)
-            echo ".github/instructions/**/*.instructions.md"
-            ;;
-        .cursor/rules/*.md)
-            echo ".github/instructions/*.instructions.md"
-            ;;
-        "*")
-            echo "*,**/*"
-            ;;
-        "*,**/*")
-            echo "*,**/*"
-            ;;
-        "**/*")
-            echo "*,**/*"  # Convert "**/*" to "*,**/*"
-            ;;
-        *.mdc)
-            echo "${pattern%.mdc}.instructions.md"
-            ;;
-        *)
-            # Standard glob patterns are fine, keep as-is
-            echo "$pattern"
-            ;;
-    esac
-}
-
-process_frontmatter() {
-    local input_file="$1"
-    local temp_file
-    temp_file=$(mktemp)
-    
-    # Extract frontmatter info first
-    local description=""
-    local apply_to="*,**/*"  # Default value
-    local always_apply=false
-    local glob_pattern=""
-    
-    # Check if file has frontmatter
-    if head -1 "$input_file" | grep -q "^---$"; then
-        # Extract description and globs from frontmatter
-        local in_frontmatter=false
-        while IFS= read -r line; do
-            if [[ "$line" == "---" ]]; then
-                if [[ "$in_frontmatter" == false ]]; then
-                    in_frontmatter=true
-                    continue
-                else
-                    # End of frontmatter
-                    break
-                fi
-            elif [[ "$in_frontmatter" == true ]]; then
-                if [[ "$line" =~ ^description:[:space:]*(.*)$ ]]; then
-                    description="${BASH_REMATCH[1]}"
-                elif [[ "$line" =~ ^globs:[:space:]*(.*)$ ]]; then
-                    local glob_value="${BASH_REMATCH[1]}"
-                    # Store the globs value but don't set apply_to yet
-                    # We'll decide what to do after checking alwaysApply
-                    glob_value=$(echo "$glob_value" | sed 's/^["'\'']//' | sed 's/["'\'']$//')
-                    # Trim whitespace safely
-                    glob_value="${glob_value#"${glob_value%%[![:space:]]*}"}"  # Remove leading whitespace
-                    glob_value="${glob_value%"${glob_value##*[![:space:]]}"}"  # Remove trailing whitespace
-                    
-                    # Always store the glob pattern, even if it's empty or "[]"
-                    glob_pattern="$glob_value"
-                elif [[ "$line" =~ ^alwaysApply:[:space:]*(.*) ]]; then
-                    local always_apply_value="${BASH_REMATCH[1]}"
-                    # Trim whitespace safely
-                    always_apply_value="${always_apply_value#"${always_apply_value%%[![:space:]]*}"}"  # Remove leading whitespace
-                    always_apply_value="${always_apply_value%"${always_apply_value##*[![:space:]]}"}"  # Remove trailing whitespace
-                    if [[ "$always_apply_value" == "true" ]]; then
-                        always_apply=true
-                    fi
-                fi
-            fi
-        done < "$input_file"
-        
-        # Extract content after frontmatter (everything after second ---)
-        local content_start_line=$(grep -n "^---$" "$input_file" | sed -n '2p' | cut -d: -f1)
-        if [[ -n "$content_start_line" ]]; then
-            content_start_line=$((content_start_line + 1))
-            tail -n +${content_start_line} "$input_file" > "${temp_file}.content"
-        else
-            # No second ---, treat everything after first --- as content
-            local first_line=$(grep -n "^---$" "$input_file" | head -1 | cut -d: -f1)
-            first_line=$((first_line + 1))
-            tail -n +${first_line} "$input_file" > "${temp_file}.content"
-        fi
-    else
-        # No frontmatter, whole file is content
-        cp "$input_file" "${temp_file}.content"
-        log_message "WARNING" "No frontmatter found in $input_file - adding default applyTo"
-    fi
-    
-    # Write new frontmatter
-    echo "---" > "$temp_file"
-    if [[ -n "$description" ]]; then
-        echo "description: $description" >> "$temp_file"
-    else
-        echo "description: " >> "$temp_file"
-    fi
-    
-    # IMPORTANT: If alwaysApply is true, ALWAYS use "*,**/*" regardless of globs
-    if [[ "$always_apply" == true ]]; then
-        apply_to="*,**/*"
-    else
-        # Only if alwaysApply is false, convert the globs
-        if [[ -n "$glob_pattern" ]]; then
-            apply_to=$(convert_glob "$glob_pattern")
-        fi
-    fi
-    
-    echo "applyTo: \"$apply_to\"" >> "$temp_file"
-    echo "---" >> "$temp_file"
-    echo "" >> "$temp_file"
-    
-    # Process content to convert .mdc references
-    if [[ -f "${temp_file}.content" ]]; then
-        while IFS= read -r line; do
-            # Convert .mdc references to .instructions.md
-            local converted_line="$line"
-            # Convert .cursor/rules/ paths to .github/instructions/
-            converted_line=$(echo "$converted_line" | sed 's|\.cursor/rules|.github/instructions|g')
-            # Convert .mdc file extensions to .instructions.md - more comprehensive patterns
-            converted_line=$(echo "$converted_line" | sed 's|\.mdc|.instructions.md|g')
-            echo "$converted_line" >> "$temp_file"
-        done < "${temp_file}.content"
-        rm "${temp_file}.content"
-    fi
-    
-    cat "$temp_file"
-    rm -f "${temp_file}"
-}
-
-convert_single_file() {
-    local source_file="$1"
-    local dest_file="$2"
-    local basename_source
-    basename_source=$(basename "${source_file}")
-    local basename_dest
-    basename_dest=$(basename "${dest_file}")
-    
-    # Create destination directory if it doesn't exist
-    local dest_dir
-    dest_dir="$(dirname "${dest_file}")"
-    if [[ ! -d "${dest_dir}" ]]; then
-        mkdir -p "${dest_dir}"
-        print_info "Created directory: ${dest_dir}"
-        log_message "INFO" "Created directory: ${dest_dir}"
-    fi
-    
-    # Check for special handling cases first
-    if [[ "${basename_source}" == "derived-cursor-rules.mdc" ]]; then
-        print_warning "SKIPPED auto-generated file: ${basename_source} (content should be migrated to numbered rules)"
-        log_message "NOTICE" "SKIPPED auto-generated file: ${basename_source} (content should be migrated to numbered rules)"
-        
-        ((FILES_SKIPPED++))
-        return 0
-    fi
-    
-    # For normal files, continue with conversion
-    print_info "Converting ${basename_source} → ${basename_dest}"
-    
-    # Process the file and write to destination
-    if [[ "${basename_source}" == "vibe-tools.mdc" ]]; then
-        print_warning "Special handling for: ${basename_source}"
-        log_message "INFO" "Special handling for ${basename_source}"
-    fi
-    
-    # Process the file and write to destination
-    if process_frontmatter "${source_file}" > "${dest_file}"; then
-        log_message "SUCCESS" "Converted: ${dest_file}"
-        ((FILES_CONVERTED++))
+    if [[ -f "$file_path" ]]; then
+        local backup_file="${file_path}.bak"
+        cp "$file_path" "$backup_file"
+        log_message "INFO" "Backed up existing file: $file_path to $backup_file"
         return 0
     else
-        print_error "Failed to convert: ${basename_source}"
-        log_message "ERROR" "Failed to convert: ${source_file}"
-        ((ERRORS_COUNT++))
         return 1
     fi
 }
 
-copy_instructions_readme() {
-    local dest_dir="$1"
-    local script_dir
-    script_dir="$(dirname "$(realpath "$0")")"
-    local readme_source="${script_dir}/../assets/.github/instructions/README.md"
-    local readme_dest="${dest_dir}/README.md"
+# *
+# * Target Generation Functions
+# *
+
+# Create cursor .mdc files for Cursor IDE
+generate_cursor_files() {
+    local source_dir="$1"
+    local cursor_rules_dir="$2"
     
-    # Only copy if source README exists and destination doesn't
-    if [[ -f "${readme_source}" && ! -f "${readme_dest}" ]]; then
-        cp "${readme_source}" "${readme_dest}"
-        print_info "Created instructions README: ${readme_dest#${PWD}/}"
-        log_message "INFO" "Copied instructions README to: ${readme_dest}"
+    print_step "Processing target: Cursor IDE"
+    log_message "INFO" "Processing target: Cursor IDE"
+    
+    # Create target directory if it doesn't exist
+    mkdir -p "$cursor_rules_dir"
+    
+    # Copy README if it exists in assets
+    local cursor_readme="${ASSETS_DIR}/.cursor/rules/README.md"
+    if [[ -f "$cursor_readme" ]]; then
+        backup_file "${cursor_rules_dir}/README.md"
+        cp "$cursor_readme" "${cursor_rules_dir}/README.md"
+        print_info "Copied Cursor rules README"
+        log_message "SUCCESS" "Copied Cursor README to: ${cursor_rules_dir}/README.md"
     fi
+    
+    # Find all source files
+    while IFS= read -r -d '' source_file; do
+        ((FILES_PROCESSED++))
+        local basename_file=$(basename "$source_file")
+        local dest_file="${cursor_rules_dir}/${basename_file%.md}.mdc"
+        
+        # Backup existing file
+        backup_file "$dest_file"
+        
+        # Simple copy with extension change - assumes master rules are already in correct format
+        # In a real implementation, you might process the file here
+        cp "$source_file" "$dest_file"
+        
+        print_info "Generated: ${dest_file#${PROJECT_ROOT}/}"
+        log_message "SUCCESS" "Generated Cursor file: $dest_file"
+        ((FILES_CONVERTED++))
+    done < <(find "$source_dir" -name "*.md" -type f -print0)
 }
 
-find_and_convert_files() {
+# Create GitHub Copilot .instructions.md files
+generate_github_files() {
     local source_dir="$1"
-    local dest_dir="$2"
+    local github_instructions_dir="$2"
     
-    # Show relative paths for readability
-    local relative_source="${source_dir#${PWD}/}"
-    [[ "$relative_source" == "$source_dir" ]] && relative_source="$source_dir"
+    print_step "Processing target: GitHub Copilot"
+    log_message "INFO" "Processing target: GitHub Copilot"
     
-    print_step "Scanning for .mdc files in: ${relative_source}"
+    # Create target directory if it doesn't exist
+    mkdir -p "$github_instructions_dir"
     
-    # Find all .mdc files (portable approach without mapfile)
-    local mdc_files=()
+    # Copy README if it exists in assets
+    local github_readme="${ASSETS_DIR}/.github/instructions/README.md"
+    if [[ -f "$github_readme" ]]; then
+        backup_file "${github_instructions_dir}/README.md"
+        cp "$github_readme" "${github_instructions_dir}/README.md"
+        print_info "Copied GitHub instructions README"
+        log_message "SUCCESS" "Copied GitHub README to: ${github_instructions_dir}/README.md"
+    fi
+    
+    # Find all source files
+    while IFS= read -r -d '' source_file; do
+        ((FILES_PROCESSED++))
+        local basename_file=$(basename "$source_file")
+        local dest_file="${github_instructions_dir}/${basename_file%.md}.instructions.md"
+        
+        # Backup existing file
+        backup_file "$dest_file"
+        
+        # Convert frontmatter and copy content
+        # For simplicity, assuming a simple copy with extension change
+        # In a full implementation, you would process frontmatter here
+        cp "$source_file" "$dest_file"
+        
+        print_info "Generated: ${dest_file#${PROJECT_ROOT}/}"
+        log_message "SUCCESS" "Generated GitHub Copilot file: $dest_file"
+        ((FILES_CONVERTED++))
+    done < <(find "$source_dir" -name "*.md" -type f -print0)
+}
+
+# Create CLAUDE.md for Claude Code
+generate_claude_file() {
+    local source_dir="$1"
+    local claude_file="$2"
+    local claude_template="${ASSETS_DIR}/CLAUDE.md"
+    
+    print_step "Creating Claude Code file: ${claude_file#${PROJECT_ROOT}/}"
+    log_message "INFO" "Processing target: Claude Code"
+    
+    # Check if template exists
+    if [[ ! -f "$claude_template" ]]; then
+        print_error "Claude template not found: ${claude_template#${PROJECT_ROOT}/}"
+        log_message "ERROR" "Claude template not found: $claude_template"
+        ((ERRORS_COUNT++))
+        return 1
+    fi
+    
+    # Backup existing file
+    backup_file "$claude_file"
+    
+    # Copy template to destination
+    cp "$claude_template" "$claude_file"
+    
+    # Find all rule files
+    local rule_files=()
     while IFS= read -r -d '' file; do
-        mdc_files+=("$file")
-    done < <(find "${source_dir}" -name "*.mdc" -type f -print0)
+        rule_files+=("$file")
+    done < <(find "${source_dir}" -name "*.md" -type f | sort -n)
     
-    if [[ ${#mdc_files[@]} -eq 0 ]]; then
-        print_warning "No .mdc files found in: ${relative_source}"
+    if [[ ${#rule_files[@]} -eq 0 ]]; then
+        print_warning "No rule files found in: ${source_dir#${PROJECT_ROOT}/}"
+        log_message "WARNING" "No rule files found in: $source_dir"
         return 0
     fi
     
-    print_info "Found ${#mdc_files[@]} .mdc file(s) to convert"
-    log_message "INFO" "Found ${#mdc_files[@]} .mdc files to convert"
+    print_info "Found ${#rule_files[@]} rule file(s) to process"
+    log_message "INFO" "Found ${#rule_files[@]} rule files for Claude"
     
-    # Ensure destination directory exists
-    if [[ ! -d "$dest_dir" ]]; then
-        mkdir -p "$dest_dir"
-        print_info "Created directory: ${dest_dir#${PWD}/}"
-        log_message "INFO" "Created directory: $dest_dir"
-    fi
-    
-    # Copy instructions README to destination directory
-    copy_instructions_readme "$dest_dir"
-    
-    # Process each file
-    local conversion_error=0
-    for mdc_file in "${mdc_files[@]}"; do
+    # Append each rule to the Claude file with proper heading format
+    for rule_file in "${rule_files[@]}"; do
         ((FILES_PROCESSED++))
+        local basename_rule=$(basename "${rule_file}")
         
-        # Generate destination filename (portable relative path)
-        local relative_path
-        if [[ "${mdc_file}" == "${source_dir}/"* ]]; then
-            relative_path="${mdc_file#${source_dir}/}"
+        print_info "Adding ${basename_rule} to Claude file"
+        
+        # Extract rule ID and title (assuming format like 1001-rule-name.md)
+        local rule_id
+        local title
+        
+        # Try to extract ID from filename (assumes format like 1001-rule-name.md)
+        if [[ $basename_rule =~ ^([0-9]+)- ]]; then
+            rule_id="${BASH_REMATCH[1]}"
+            # Extract title from file (first heading)
+            title=$(grep -m 1 "^# " "$rule_file" | sed 's/^# //')
+            
+            # If no title found, use filename without extension and ID
+            if [[ -z "$title" ]]; then
+                title="${basename_rule#${rule_id}-}"
+                title="${title%.md}"
+            fi
         else
-            # Fallback if paths differ (e.g., absolute vs relative)
-            relative_path="$(basename "${mdc_file}")"
+            # If no ID found, just use the title
+            rule_id=""
+            title=$(grep -m 1 "^# " "$rule_file" | sed 's/^# //')
+            
+            # If no title found, use filename without extension
+            if [[ -z "$title" ]]; then
+                title="${basename_rule%.md}"
+            fi
         fi
-        local dest_file="${dest_dir}/${relative_path%.mdc}.instructions.md"
         
-        local result=0
-        convert_single_file "${mdc_file}" "${dest_file}"
-        result=$?
-        
-        # Only consider a non-zero result as an error if it's not 2 (skipped)
-        if [[ ${result} -ne 0 && ${result} -ne 2 ]]; then
-            conversion_error=1
+        # Add rule to Claude file with proper heading format
+        if [[ -n "$rule_id" ]]; then
+            echo "## [${rule_id}] ${title}" >> "$claude_file"
+        else
+            echo "## ${title}" >> "$claude_file"
         fi
+        echo "" >> "$claude_file"
+        
+        # Extract content after frontmatter
+        local in_frontmatter=false
+        local frontmatter_count=0
+        
+        while IFS= read -r line; do
+            if [[ "$line" == "---" ]]; then
+                if [[ "$in_frontmatter" == false ]]; then
+                    in_frontmatter=true
+                    ((frontmatter_count++))
+                else
+                    in_frontmatter=false
+                    ((frontmatter_count++))
+                fi
+                continue
+            fi
+            
+            # Skip frontmatter content
+            if [[ "$in_frontmatter" == true ]]; then
+                continue
+            fi
+            
+            # Skip initial heading (already used as section title)
+            if [[ "$frontmatter_count" -eq 2 && "$line" =~ ^#[[:space:]] ]]; then
+                frontmatter_count=3  # Mark that we've processed the heading
+                continue
+            fi
+            
+            # Add all other content
+            echo "$line" >> "$claude_file"
+        done < "$rule_file"
+        
+        # Add separator between rules
+        echo "" >> "$claude_file"
+        
+        ((FILES_CONVERTED++))
     done
     
-    return ${conversion_error}
+    print_info "Claude file created successfully: ${claude_file#${PROJECT_ROOT}/}"
+    log_message "SUCCESS" "Created Claude file: $claude_file with ${#rule_files[@]} rules"
+}
+
+# Create GEMINI.md for Gemini CLI
+generate_gemini_file() {
+    local source_dir="$1"
+    local gemini_file="$2"
+    local gemini_template="${ASSETS_DIR}/GEMINI.md"
+    
+    print_step "Creating Gemini CLI file: ${gemini_file#${PROJECT_ROOT}/}"
+    log_message "INFO" "Processing target: Gemini CLI"
+    
+    # Check if template exists
+    if [[ ! -f "$gemini_template" ]]; then
+        print_error "Gemini template not found: ${gemini_template#${PROJECT_ROOT}/}"
+        log_message "ERROR" "Gemini template not found: $gemini_template"
+        ((ERRORS_COUNT++))
+        return 1
+    fi
+    
+    # Backup existing file
+    backup_file "$gemini_file"
+    
+    # Copy template to destination
+    cp "$gemini_template" "$gemini_file"
+    
+    # Find all rule files
+    local rule_files=()
+    while IFS= read -r -d '' file; do
+        rule_files+=("$file")
+    done < <(find "${source_dir}" -name "*.md" -type f | sort -n)
+    
+    if [[ ${#rule_files[@]} -eq 0 ]]; then
+        print_warning "No rule files found in: ${source_dir#${PROJECT_ROOT}/}"
+        log_message "WARNING" "No rule files found in: $source_dir"
+        return 0
+    fi
+    
+    print_info "Found ${#rule_files[@]} rule file(s) to process"
+    log_message "INFO" "Found ${#rule_files[@]} rule files for Gemini"
+    
+    # Append each rule to the Gemini file with proper heading format
+    for rule_file in "${rule_files[@]}"; do
+        ((FILES_PROCESSED++))
+        local basename_rule=$(basename "${rule_file}")
+        
+        print_info "Adding ${basename_rule} to Gemini file"
+        
+        # Extract rule ID and title (assuming format like 1001-rule-name.md)
+        local rule_id
+        local title
+        
+        # Try to extract ID from filename (assumes format like 1001-rule-name.md)
+        if [[ $basename_rule =~ ^([0-9]+)- ]]; then
+            rule_id="${BASH_REMATCH[1]}"
+            # Extract title from file (first heading)
+            title=$(grep -m 1 "^# " "$rule_file" | sed 's/^# //')
+            
+            # If no title found, use filename without extension and ID
+            if [[ -z "$title" ]]; then
+                title="${basename_rule#${rule_id}-}"
+                title="${title%.md}"
+            fi
+        else
+            # If no ID found, just use the title
+            rule_id=""
+            title=$(grep -m 1 "^# " "$rule_file" | sed 's/^# //')
+            
+            # If no title found, use filename without extension
+            if [[ -z "$title" ]]; then
+                title="${basename_rule%.md}"
+            fi
+        fi
+        
+        # Add rule to Gemini file with proper H2 heading format
+        if [[ -n "$rule_id" ]]; then
+            echo "## [${rule_id}] ${title}" >> "$gemini_file"
+        else
+            echo "## ${title}" >> "$gemini_file"
+        fi
+        echo "" >> "$gemini_file"
+        
+        # Extract content after frontmatter
+        local in_frontmatter=false
+        local frontmatter_count=0
+        
+        while IFS= read -r line; do
+            if [[ "$line" == "---" ]]; then
+                if [[ "$in_frontmatter" == false ]]; then
+                    in_frontmatter=true
+                    ((frontmatter_count++))
+                else
+                    in_frontmatter=false
+                    ((frontmatter_count++))
+                fi
+                continue
+            fi
+            
+            # Skip frontmatter content
+            if [[ "$in_frontmatter" == true ]]; then
+                continue
+            fi
+            
+            # Skip initial heading (already used as section title)
+            if [[ "$frontmatter_count" -eq 2 && "$line" =~ ^#[[:space:]] ]]; then
+                frontmatter_count=3  # Mark that we've processed the heading
+                continue
+            fi
+            
+            # Add all other content
+            echo "$line" >> "$gemini_file"
+        done < "$rule_file"
+        
+        # Add spacing between rules
+        echo "" >> "$gemini_file"
+        echo "" >> "$gemini_file"
+        
+        ((FILES_CONVERTED++))
+    done
+    
+    print_info "Gemini file created successfully: ${gemini_file#${PROJECT_ROOT}/}"
+    log_message "SUCCESS" "Created Gemini file: $gemini_file with ${#rule_files[@]} rules"
+}
+
+# Copy documentation files for Codex CLI
+copy_doc_files() {
+    local doc_files=("AGENTS.md" "ARCHITECTURE.md" "RULES.md")
+    
+    print_step "Processing target: Codex CLI Documentation"
+    log_message "INFO" "Processing target: Codex CLI Documentation"
+    
+    for doc_file in "${doc_files[@]}"; do
+        local source_file="${ASSETS_DIR}/${doc_file}"
+        local dest_file="${PROJECT_ROOT}/${doc_file}"
+        
+        if [[ ! -f "$source_file" ]]; then
+            print_error "Documentation template not found: ${source_file#${PROJECT_ROOT}/}"
+            log_message "ERROR" "Documentation template not found: $source_file"
+            ((ERRORS_COUNT++))
+            continue
+        fi
+        
+        # Backup existing file
+        backup_file "$dest_file"
+        
+        # Copy template to destination
+        cp "$source_file" "$dest_file"
+        
+        print_info "Copied ${doc_file} to project root"
+        log_message "SUCCESS" "Copied documentation file: $doc_file"
+        ((FILES_CONVERTED++))
+    done
 }
 
 # *
@@ -424,52 +489,39 @@ print_summary() {
     
     # Add next steps for the user
     print_info "Next steps:"
-    print_info "1. Review the converted files in their respective locations:"
-    print_info "   - Cursor: .cursor/rules/"
+    print_info "1. Review the generated files in their respective locations:"
+    print_info "   - Codex CLI Documentation: AGENTS.md, ARCHITECTURE.md, RULES.md"
+    print_info "   - Cursor IDE: .cursor/rules/"
     print_info "   - GitHub Copilot: .github/instructions/"
-    print_info "   - Claude: CLAUDE.md"
-    print_info "   - Gemini: GEMINI.md"
+    print_info "   - Claude Code: CLAUDE.md"
+    print_info "   - Gemini CLI: GEMINI.md"
     print_info "2. Test with your preferred AI coding assistants"
     print_info "3. Make any necessary adjustments to the rule files"
 }
 
 main() {
-    print_header "IDE Rules Synchronizer v2.0"
+    print_header "IDE Rules Synchronizer v3.0"
     ensure_log_directory
     enable_logging
     
     # Default values
-    local source_dir="master-rules"
-    local targets="cursor,github,claude,gemini"
+    local source_dir="${PROJECT_ROOT}/master-rules"
+    local targets="cursor,github,claude,gemini,docs"
     
     # Parse arguments
-    if [[ $# -lt 1 ]]; then
-        print_error "Missing required project root path argument"
-        echo ""
-        show_usage
-        exit 1
-    fi
-    
-    # Help flag check
-    if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
-        show_usage
-        exit 0
-    fi
-    
-    # Get project root path (first argument)
-    local project_root="$1"
-    shift
-    
-    # Parse optional arguments
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --from)
-                source_dir="$2"
+                source_dir="${PROJECT_ROOT}/$2"
                 shift 2
                 ;;
             --to)
                 targets="$2"
                 shift 2
+                ;;
+            -h|--help)
+                show_usage
+                exit 0
                 ;;
             *)
                 print_error "Unknown option: $1"
@@ -479,113 +531,53 @@ main() {
         esac
     done
     
-    # Get and validate project root path
-    project_root="$(cd "$project_root" 2>/dev/null && pwd)" || {
-        print_error "Invalid project root path: $project_root"
-        print_error "The specified path does not exist or is not accessible."
-        exit 1
-    }
-    
-    # Full path to source directory
-    local source_dir_path="$project_root/$source_dir"
-    
-    # Validate environment
-    validate_dependencies
-    
-    # Show relative paths for readability
-    local relative_project="${project_root#${PWD}/}"
-    [[ "$relative_project" == "$project_root" ]] && relative_project="$project_root"
-    local relative_source="${source_dir_path#${PWD}/}"
-    [[ "$relative_source" == "$source_dir_path" ]] && relative_source="$source_dir_path"
-    
-    print_info "Synchronizing master rules to multiple targets"
-    print_info "Project root: $relative_project"
-    print_info "Source directory: $relative_source"
-    
     # Check if source directory exists
-    if [[ ! -d "$source_dir_path" ]]; then
-        print_error "Source directory not found: $relative_source"
-        print_error "Ensure your project has a $source_dir/ directory with rule files."
+    if [[ ! -d "$source_dir" ]]; then
+        print_error "Source directory not found: ${source_dir#${PROJECT_ROOT}/}"
+        print_error "Ensure your project has a master-rules/ directory with rule files."
         exit 1
     fi
     
+    # Check if assets directory exists
+    if [[ ! -d "$ASSETS_DIR" ]]; then
+        print_error "Assets directory not found: ${ASSETS_DIR#${PROJECT_ROOT}/}"
+        print_error "Ensure your project has an assets/ directory with template files."
+        exit 1
+    fi
+    
+    # Validate dependencies
+    validate_dependencies
+    
     # Log conversion start
-    log_message "INFO" "Starting master rules synchronization"
-    log_message "INFO" "Project root: $project_root"
-    log_message "INFO" "Source directory: $source_dir_path"
+    log_message "INFO" "Starting rules synchronization"
+    log_message "INFO" "Project root: $PROJECT_ROOT"
+    log_message "INFO" "Source directory: $source_dir"
     log_message "INFO" "Target formats: $targets"
     
     # Convert targets string to array
     IFS=',' read -ra target_array <<< "$targets"
     
     # Process each target
-    local conversion_error=0
-    
     for target in "${target_array[@]}"; do
         case "$target" in
             cursor)
-                print_step "Processing target: Cursor"
-                local cursor_rules_dir="$project_root/.cursor/rules"
-                
-                # Convert files from source to Cursor format
-                # TODO: Add function to convert source files to .mdc format
-                
-                print_info "Target directory: ${cursor_rules_dir#${PWD}/}"
-                
-                # For now, we'll just copy the files as they are
-                # In a real implementation, you'd want to convert the frontmatter properly
-                mkdir -p "$cursor_rules_dir"
-                
-                # Find all source files
-                while IFS= read -r -d '' file; do
-                    local basename_file=$(basename "$file")
-                    local dest_file="$cursor_rules_dir/${basename_file%.md}.mdc"
-                    
-                    print_info "Converting ${basename_file} → ${dest_file#${PWD}/}"
-                    
-                    # Process file
-                    # For now, just copy the file with extension change
-                    cp "$file" "$dest_file"
-                    ((FILES_CONVERTED++))
-                done < <(find "$source_dir_path" -name "*.md" -type f -print0)
+                generate_cursor_files "$source_dir" "${PROJECT_ROOT}/.cursor/rules"
                 ;;
             
             github)
-                print_step "Processing target: GitHub Copilot"
-                local github_instructions_dir="$project_root/.github/instructions"
-                
-                print_info "Target directory: ${github_instructions_dir#${PWD}/}"
-                
-                # Find all source files
-                mkdir -p "$github_instructions_dir"
-                
-                while IFS= read -r -d '' file; do
-                    local basename_file=$(basename "$file")
-                    local dest_file="$github_instructions_dir/${basename_file%.md}.instructions.md"
-                    
-                    print_info "Converting ${basename_file} → ${dest_file#${PWD}/}"
-                    
-                    # Process file - for now a simple copy with extension change
-                    # In a real implementation, you'd convert the frontmatter properly
-                    cp "$file" "$dest_file"
-                    ((FILES_CONVERTED++))
-                done < <(find "$source_dir_path" -name "*.md" -type f -print0)
+                generate_github_files "$source_dir" "${PROJECT_ROOT}/.github/instructions"
                 ;;
             
             claude)
-                print_step "Processing target: Claude"
-                local claude_file="$project_root/CLAUDE.md"
-                
-                # Create Claude file
-                create_claude_file "$source_dir_path" "$claude_file"
+                generate_claude_file "$source_dir" "${PROJECT_ROOT}/CLAUDE.md"
                 ;;
             
             gemini)
-                print_step "Processing target: Gemini"
-                local gemini_file="$project_root/GEMINI.md"
-                
-                # Create Gemini file
-                create_gemini_file "$source_dir_path" "$gemini_file"
+                generate_gemini_file "$source_dir" "${PROJECT_ROOT}/GEMINI.md"
+                ;;
+            
+            docs)
+                copy_doc_files
                 ;;
             
             *)
@@ -607,191 +599,6 @@ main() {
         log_message "ERROR" "Synchronization completed with ${ERRORS_COUNT} errors"
         exit 1
     fi
-}
-
-# Create a single Claude.md file from all rules
-create_claude_file() {
-    local source_dir="$1"
-    local dest_file="$2"
-    
-    print_step "Creating Claude file: ${dest_file#${PWD}/}"
-    
-    # Find all rule files
-    local rule_files=()
-    while IFS= read -r -d '' file; do
-        rule_files+=("$file")
-    done < <(find "${source_dir}" -name "*.md" -type f | sort -n)
-    
-    if [[ ${#rule_files[@]} -eq 0 ]]; then
-        print_warning "No rule files found in: ${source_dir#${PWD}/}"
-        return 0
-    fi
-    
-    print_info "Found ${#rule_files[@]} rule file(s) to process"
-    
-    # Create the file with header
-    cat > "$dest_file" << EOF
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-## Rules
-
-EOF
-    
-    # Process each rule file
-    for rule_file in "${rule_files[@]}"; do
-        ((FILES_PROCESSED++))
-        local basename_rule
-        basename_rule=$(basename "${rule_file}")
-        
-        print_info "Adding ${basename_rule} to Claude file"
-        
-        # Extract title from file (first heading)
-        local title
-        title=$(grep -m 1 "^# " "$rule_file" | sed 's/^# //')
-        
-        # If no title found, use filename without extension
-        if [[ -z "$title" ]]; then
-            title="${basename_rule%.md}"
-        fi
-        
-        # Add rule to Claude file
-        echo "### ${title}" >> "$dest_file"
-        echo "" >> "$dest_file"
-        
-        # Extract content after frontmatter
-        local in_frontmatter=false
-        local frontmatter_count=0
-        
-        while IFS= read -r line; do
-            if [[ "$line" == "---" ]]; then
-                if [[ "$in_frontmatter" == false ]]; then
-                    in_frontmatter=true
-                    ((frontmatter_count++))
-                else
-                    in_frontmatter=false
-                    ((frontmatter_count++))
-                fi
-                continue
-            fi
-            
-            # Skip frontmatter content
-            if [[ "$in_frontmatter" == true ]]; then
-                continue
-            fi
-            
-            # Skip initial heading (already used as section title)
-            if [[ "$frontmatter_count" -eq 2 && "$line" =~ ^#[[:space:]] ]]; then
-                frontmatter_count=3  # Mark that we've processed the heading
-                continue
-            fi
-            
-            # Add all other content
-            echo "$line" >> "$dest_file"
-        done < "$rule_file"
-        
-        # Add separator between rules
-        echo "" >> "$dest_file"
-        echo "---" >> "$dest_file"
-        echo "" >> "$dest_file"
-        
-        ((FILES_CONVERTED++))
-    done
-    
-    print_info "Claude file created successfully: ${dest_file#${PWD}/}"
-    log_message "SUCCESS" "Created Claude file: $dest_file with ${#rule_files[@]} rules"
-}
-
-# Create a single Gemini.md file from all rules
-create_gemini_file() {
-    local source_dir="$1"
-    local dest_file="$2"
-    
-    print_step "Creating Gemini file: ${dest_file#${PWD}/}"
-    
-    # Find all rule files
-    local rule_files=()
-    while IFS= read -r -d '' file; do
-        rule_files+=("$file")
-    done < <(find "${source_dir}" -name "*.md" -type f | sort -n)
-    
-    if [[ ${#rule_files[@]} -eq 0 ]]; then
-        print_warning "No rule files found in: ${source_dir#${PWD}/}"
-        return 0
-    fi
-    
-    print_info "Found ${#rule_files[@]} rule file(s) to process"
-    
-    # Create the file with header
-    cat > "$dest_file" << EOF
-# GEMINI.md
-
-This file provides guidance to Gemini when working with code in this repository.
-
-EOF
-    
-    # Process each rule file
-    for rule_file in "${rule_files[@]}"; do
-        ((FILES_PROCESSED++))
-        local basename_rule
-        basename_rule=$(basename "${rule_file}")
-        
-        print_info "Adding ${basename_rule} to Gemini file"
-        
-        # Extract title from file (first heading)
-        local title
-        title=$(grep -m 1 "^# " "$rule_file" | sed 's/^# //')
-        
-        # If no title found, use filename without extension
-        if [[ -z "$title" ]]; then
-            title="${basename_rule%.md}"
-        fi
-        
-        # Add rule to Gemini file with H2 heading
-        echo "## ${title}" >> "$dest_file"
-        echo "" >> "$dest_file"
-        
-        # Extract content after frontmatter
-        local in_frontmatter=false
-        local frontmatter_count=0
-        
-        while IFS= read -r line; do
-            if [[ "$line" == "---" ]]; then
-                if [[ "$in_frontmatter" == false ]]; then
-                    in_frontmatter=true
-                    ((frontmatter_count++))
-                else
-                    in_frontmatter=false
-                    ((frontmatter_count++))
-                fi
-                continue
-            fi
-            
-            # Skip frontmatter content
-            if [[ "$in_frontmatter" == true ]]; then
-                continue
-            fi
-            
-            # Skip initial heading (already used as section title)
-            if [[ "$frontmatter_count" -eq 2 && "$line" =~ ^#[[:space:]] ]]; then
-                frontmatter_count=3  # Mark that we've processed the heading
-                continue
-            fi
-            
-            # Add all other content
-            echo "$line" >> "$dest_file"
-        done < "$rule_file"
-        
-        # Add extra newlines between rules
-        echo "" >> "$dest_file"
-        echo "" >> "$dest_file"
-        
-        ((FILES_CONVERTED++))
-    done
-    
-    print_info "Gemini file created successfully: ${dest_file#${PWD}/}"
-    log_message "SUCCESS" "Created Gemini file: $dest_file with ${#rule_files[@]} rules"
 }
 
 # --- Script Entrypoint ---
