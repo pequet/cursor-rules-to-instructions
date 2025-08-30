@@ -1,9 +1,13 @@
 #!/bin/bash
 
 # Standard Error Handling
-set -e
-set -u
-set -o pipefail
+# Temporarily disabled for debugging
+#set -e
+#set -u
+#set -o pipefail
+
+# Error trapping for debugging
+trap 'echo "ERROR: Line $LINENO failed with exit code $?" >&2' ERR
 
 # --- Logging Toggle (disabled until log dir ensured) ---
 LOGGING_ENABLED=0
@@ -87,18 +91,16 @@ validate_dependencies() {
 }
 
 show_usage() {
-    echo "Usage: $0 [--from <source_dir>] [--to <targets>]"
+    echo "Usage: $0 <project_root_path>"
     echo ""
     echo "Synchronize master rules to multiple AI coding assistant formats"
     echo ""
     echo "Arguments:"
-    echo "  --from <source_dir>  Directory containing master rule files (default: master-rules)"
-    echo "  --to <targets>       Comma-separated list of targets (cursor,github,claude,gemini,docs) (default: all)"
+    echo "  project_root_path    Path to the project root containing master-rules/ directory"
     echo ""
     echo "Examples:"
-    echo "  $0 --from master-rules --to cursor,github"
-    echo "  $0 --to claude,gemini"
-    echo "  $0 --to docs"
+    echo "  $0 /path/to/my/project"
+    echo "  $0 ."
 }
 
 backup_file() {
@@ -107,11 +109,9 @@ backup_file() {
     if [[ -f "$file_path" ]]; then
         local backup_file="${file_path}.bak"
         cp "$file_path" "$backup_file"
-        log_message "INFO" "Backed up existing file: $file_path to $backup_file"
         return 0
-    else
-        return 1
     fi
+    return 0
 }
 
 # *
@@ -120,71 +120,169 @@ backup_file() {
 
 # Create cursor .mdc files for Cursor IDE
 generate_cursor_files() {
+    echo "DEBUG: Entering generate_cursor_files function" >&2
     local source_dir="$1"
     local cursor_rules_dir="$2"
+    echo "DEBUG: source_dir=$source_dir, cursor_rules_dir=$cursor_rules_dir" >&2
     
     print_step "Processing target: Cursor IDE"
-    log_message "INFO" "Processing target: Cursor IDE"
+    echo "DEBUG: After print_step" >&2
+    echo "INFO: Processing target: Cursor IDE" >&2
+    echo "DEBUG: After first log_message" >&2
+    
+    echo "INFO: Source dir: $source_dir" >&2
+    echo "DEBUG: After source dir log" >&2
+    echo "INFO: Cursor rules dir: $cursor_rules_dir" >&2
+    echo "DEBUG: After cursor rules dir log" >&2
+    echo "INFO: ASSETS_DIR: $ASSETS_DIR" >&2
+    echo "DEBUG: After ASSETS_DIR log" >&2
     
     # Create target directory if it doesn't exist
+    echo "DEBUG: About to create directory" >&2
+    echo "INFO: Creating target directory: $cursor_rules_dir" >&2
+    echo "DEBUG: About to run mkdir -p" >&2
     mkdir -p "$cursor_rules_dir"
+    echo "DEBUG: mkdir completed" >&2
+    echo "INFO: Target directory created successfully" >&2
+    echo "DEBUG: Directory creation logged" >&2
     
     # Copy README if it exists in assets
+    echo "DEBUG: About to copy README" >&2
     local cursor_readme="${ASSETS_DIR}/.cursor/rules/README.md"
+    echo "DEBUG: cursor_readme=$cursor_readme" >&2
+    echo "INFO: Checking for README file: $cursor_readme" >&2
+    echo "DEBUG: After checking README log" >&2
+    
     if [[ -f "$cursor_readme" ]]; then
-        backup_file "${cursor_rules_dir}/README.md"
+        echo "DEBUG: README file exists" >&2
+        echo "INFO: README file exists, proceeding with backup and copy" >&2
+        echo "DEBUG: About to backup README" >&2
+        backup_file "${cursor_rules_dir}/README.md" || echo "DEBUG: Backup returned non-zero (file doesn't exist)" >&2
+        echo "DEBUG: Backup completed" >&2
+        echo "INFO: Backup completed, copying README" >&2
+        echo "DEBUG: About to cp README" >&2
         cp "$cursor_readme" "${cursor_rules_dir}/README.md"
+        echo "DEBUG: cp completed" >&2
         print_info "Copied Cursor rules README"
-        log_message "SUCCESS" "Copied Cursor README to: ${cursor_rules_dir}/README.md"
+        echo "DEBUG: print_info completed" >&2
+        echo "SUCCESS: Copied Cursor README to: ${cursor_rules_dir}/README.md" >&2
+        echo "DEBUG: Success log completed" >&2
+    else
+        echo "DEBUG: README file not found" >&2
+        echo "WARNING: README file not found: $cursor_readme" >&2
+        echo "DEBUG: Warning log completed" >&2
     fi
     
     # Find all source files
+    echo "DEBUG: About to find source files" >&2
+    echo "INFO: Looking for .md files in: $source_dir" >&2
+    echo "DEBUG: After find log" >&2
+    
+    local file_count=0
+    echo "DEBUG: Initialized file_count=0" >&2
     while IFS= read -r -d '' source_file; do
+        ((file_count++))
+        echo "INFO: Processing file $file_count: $source_file" >&2
+        
         ((FILES_PROCESSED++))
         local basename_file=$(basename "$source_file")
         local dest_file="${cursor_rules_dir}/${basename_file%.md}.mdc"
         
+        echo "INFO: Converting $basename_file to ${basename_file%.md}.mdc" >&2
+        
         # Backup existing file
-        backup_file "$dest_file"
+        backup_file "$dest_file" || echo "DEBUG: Backup failed or file didn't exist" >&2
+        echo "DEBUG: Past backup_file call" >&2
         
         # Simple copy with extension change - assumes master rules are already in correct format
         # In a real implementation, you might process the file here
         cp "$source_file" "$dest_file"
         
         print_info "Generated: ${dest_file#${PROJECT_ROOT}/}"
-        log_message "SUCCESS" "Generated Cursor file: $dest_file"
+        echo "SUCCESS: Generated Cursor file: $dest_file" >&2
         ((FILES_CONVERTED++))
-    done < <(find "$source_dir" -name "*.md" -type f -print0)
+        echo "DEBUG: File processing completed for: $source_file" >&2
+    done < <(echo "DEBUG: Starting find command for: $source_dir" >&2 && find "$source_dir" -name "*.md" -type f -print0)
+    echo "DEBUG: Find command completed" >&2
+    
+    echo "INFO: Cursor files generation completed. Processed $file_count files." >&2
 }
 
 # Create GitHub Copilot .instructions.md files
 generate_github_files() {
+    echo "DEBUG: Entering generate_github_files function" >&2
     local source_dir="$1"
     local github_instructions_dir="$2"
+    echo "DEBUG: source_dir=$source_dir, github_instructions_dir=$github_instructions_dir" >&2
     
     print_step "Processing target: GitHub Copilot"
-    log_message "INFO" "Processing target: GitHub Copilot"
+    echo "DEBUG: After print_step" >&2
+    echo "INFO: Processing target: GitHub Copilot" >&2
+    echo "DEBUG: After first log_message" >&2
+    
+    echo "INFO: Source dir: $source_dir" >&2
+    echo "DEBUG: After source dir log" >&2
+    echo "INFO: GitHub instructions dir: $github_instructions_dir" >&2
+    echo "DEBUG: After github instructions dir log" >&2
+    echo "INFO: ASSETS_DIR: $ASSETS_DIR" >&2
+    echo "DEBUG: After ASSETS_DIR log" >&2
     
     # Create target directory if it doesn't exist
+    echo "DEBUG: About to create directory" >&2
+    echo "INFO: Creating target directory: $github_instructions_dir" >&2
+    echo "DEBUG: About to run mkdir -p" >&2
     mkdir -p "$github_instructions_dir"
+    echo "DEBUG: mkdir completed" >&2
+    echo "INFO: Target directory created successfully" >&2
+    echo "DEBUG: Directory creation logged" >&2
     
     # Copy README if it exists in assets
+    echo "DEBUG: About to copy README" >&2
     local github_readme="${ASSETS_DIR}/.github/instructions/README.md"
+    echo "DEBUG: github_readme=$github_readme" >&2
+    echo "INFO: Checking for README file: $github_readme" >&2
+    echo "DEBUG: After checking README log" >&2
+    
     if [[ -f "$github_readme" ]]; then
-        backup_file "${github_instructions_dir}/README.md"
+        echo "DEBUG: README file exists" >&2
+        echo "INFO: README file exists, proceeding with backup and copy" >&2
+        echo "DEBUG: About to backup README" >&2
+        backup_file "${github_instructions_dir}/README.md" || echo "DEBUG: Backup returned non-zero (file doesn't exist)" >&2
+        echo "DEBUG: Backup completed" >&2
+        echo "INFO: Backup completed, copying README" >&2
+        echo "DEBUG: About to cp README" >&2
         cp "$github_readme" "${github_instructions_dir}/README.md"
+        echo "DEBUG: cp completed" >&2
         print_info "Copied GitHub instructions README"
-        log_message "SUCCESS" "Copied GitHub README to: ${github_instructions_dir}/README.md"
+        echo "DEBUG: print_info completed" >&2
+        echo "SUCCESS: Copied GitHub README to: ${github_instructions_dir}/README.md" >&2
+        echo "DEBUG: Success log completed" >&2
+    else
+        echo "DEBUG: README file not found" >&2
+        echo "WARNING: README file not found: $github_readme" >&2
+        echo "DEBUG: Warning log completed" >&2
     fi
     
     # Find all source files
+    echo "DEBUG: About to find source files" >&2
+    echo "INFO: Looking for .md files in: $source_dir" >&2
+    echo "DEBUG: After find log" >&2
+    
+    local file_count=0
+    echo "DEBUG: Initialized file_count=0" >&2
     while IFS= read -r -d '' source_file; do
+        ((file_count++))
+        echo "INFO: Processing file $file_count: $source_file" >&2
+        
         ((FILES_PROCESSED++))
         local basename_file=$(basename "$source_file")
         local dest_file="${github_instructions_dir}/${basename_file%.md}.instructions.md"
         
+        echo "INFO: Converting $basename_file to ${basename_file%.md}.instructions.md" >&2
+        
         # Backup existing file
-        backup_file "$dest_file"
+        backup_file "$dest_file" || echo "DEBUG: Backup failed or file didn't exist" >&2
+        echo "DEBUG: Past backup_file call" >&2
         
         # Convert frontmatter and copy content
         # For simplicity, assuming a simple copy with extension change
@@ -192,9 +290,13 @@ generate_github_files() {
         cp "$source_file" "$dest_file"
         
         print_info "Generated: ${dest_file#${PROJECT_ROOT}/}"
-        log_message "SUCCESS" "Generated GitHub Copilot file: $dest_file"
+        echo "SUCCESS: Generated GitHub Copilot file: $dest_file" >&2
         ((FILES_CONVERTED++))
-    done < <(find "$source_dir" -name "*.md" -type f -print0)
+        echo "DEBUG: File processing completed for: $source_file" >&2
+    done < <(echo "DEBUG: Starting find command for: $source_dir" >&2 && find "$source_dir" -name "*.md" -type f -print0)
+    echo "DEBUG: Find command completed" >&2
+    
+    echo "INFO: GitHub files generation completed. Processed $file_count files." >&2
 }
 
 # Create CLAUDE.md for Claude Code
@@ -204,12 +306,12 @@ generate_claude_file() {
     local claude_template="${ASSETS_DIR}/CLAUDE.md"
     
     print_step "Creating Claude Code file: ${claude_file#${PROJECT_ROOT}/}"
-    log_message "INFO" "Processing target: Claude Code"
+    echo "INFO: Processing target: Claude Code" >&2
     
     # Check if template exists
     if [[ ! -f "$claude_template" ]]; then
         print_error "Claude template not found: ${claude_template#${PROJECT_ROOT}/}"
-        log_message "ERROR" "Claude template not found: $claude_template"
+        echo "ERROR: Claude template not found: $claude_template" >&2
         ((ERRORS_COUNT++))
         return 1
     fi
@@ -224,16 +326,16 @@ generate_claude_file() {
     local rule_files=()
     while IFS= read -r -d '' file; do
         rule_files+=("$file")
-    done < <(find "${source_dir}" -name "*.md" -type f | sort -n)
+    done < <(find "${source_dir}" -name "*.md" -type f -print0 | sort -z)
     
     if [[ ${#rule_files[@]} -eq 0 ]]; then
         print_warning "No rule files found in: ${source_dir#${PROJECT_ROOT}/}"
-        log_message "WARNING" "No rule files found in: $source_dir"
+        echo "WARNING: No rule files found in: $source_dir" >&2
         return 0
     fi
     
     print_info "Found ${#rule_files[@]} rule file(s) to process"
-    log_message "INFO" "Found ${#rule_files[@]} rule files for Claude"
+    echo "INFO: Found ${#rule_files[@]} rule files for Claude" >&2
     
     # Append each rule to the Claude file with proper heading format
     for rule_file in "${rule_files[@]}"; do
@@ -268,11 +370,12 @@ generate_claude_file() {
             fi
         fi
         
-        # Add rule to Claude file with proper heading format
+        # Add a blank line and then add rule to Claude file with H3 heading (under "## Development Rules")
+        echo "" >> "$claude_file"
         if [[ -n "$rule_id" ]]; then
-            echo "## [${rule_id}] ${title}" >> "$claude_file"
+            echo "### [${rule_id}] ${title}" >> "$claude_file"
         else
-            echo "## ${title}" >> "$claude_file"
+            echo "### ${title}" >> "$claude_file"
         fi
         echo "" >> "$claude_file"
         
@@ -314,7 +417,7 @@ generate_claude_file() {
     done
     
     print_info "Claude file created successfully: ${claude_file#${PROJECT_ROOT}/}"
-    log_message "SUCCESS" "Created Claude file: $claude_file with ${#rule_files[@]} rules"
+    echo "SUCCESS: Created Claude file: $claude_file with ${#rule_files[@]} rules" >&2
 }
 
 # Create GEMINI.md for Gemini CLI
@@ -324,42 +427,52 @@ generate_gemini_file() {
     local gemini_template="${ASSETS_DIR}/GEMINI.md"
     
     print_step "Creating Gemini CLI file: ${gemini_file#${PROJECT_ROOT}/}"
-    log_message "INFO" "Processing target: Gemini CLI"
+    echo "INFO: Processing target: Gemini CLI" >&2
     
     # Check if template exists
     if [[ ! -f "$gemini_template" ]]; then
         print_error "Gemini template not found: ${gemini_template#${PROJECT_ROOT}/}"
-        log_message "ERROR" "Gemini template not found: $gemini_template"
+        echo "ERROR: Gemini template not found: $gemini_template" >&2
         ((ERRORS_COUNT++))
         return 1
     fi
     
+    echo "DEBUG: PROJECT_ROOT=$PROJECT_ROOT" >&2
+    echo "DEBUG: ASSETS_DIR=$ASSETS_DIR" >&2
+    echo "DEBUG: gemini_template=$gemini_template" >&2
+    echo "DEBUG: Template exists? $(test -f "$gemini_template" && echo "YES" || echo "NO")" >&2
+    
     # Backup existing file
     backup_file "$gemini_file"
+    echo "DEBUG: After backup_file call" >&2
     
     # Copy template to destination
     cp "$gemini_template" "$gemini_file"
+    echo "DEBUG: After template copy" >&2
     
     # Find all rule files
     local rule_files=()
     while IFS= read -r -d '' file; do
         rule_files+=("$file")
-    done < <(find "${source_dir}" -name "*.md" -type f | sort -n)
+    done < <(find "${source_dir}" -name "*.md" -type f -print0 | sort -z)
     
     if [[ ${#rule_files[@]} -eq 0 ]]; then
         print_warning "No rule files found in: ${source_dir#${PROJECT_ROOT}/}"
-        log_message "WARNING" "No rule files found in: $source_dir"
+        echo "WARNING: No rule files found in: $source_dir" >&2
         return 0
     fi
     
     print_info "Found ${#rule_files[@]} rule file(s) to process"
-    log_message "INFO" "Found ${#rule_files[@]} rule files for Gemini"
+    echo "INFO: Found ${#rule_files[@]} rule files for Gemini" >&2
+    
+    echo "DEBUG: About to start Gemini file processing loop" >&2
     
     # Append each rule to the Gemini file with proper heading format
     for rule_file in "${rule_files[@]}"; do
         ((FILES_PROCESSED++))
         local basename_rule=$(basename "${rule_file}")
         
+        echo "DEBUG: Processing Gemini file: $rule_file" >&2
         print_info "Adding ${basename_rule} to Gemini file"
         
         # Extract rule ID and title (assuming format like 1001-rule-name.md)
@@ -388,42 +501,44 @@ generate_gemini_file() {
             fi
         fi
         
-        # Add rule to Gemini file with proper H2 heading format
+        # Add a blank line and then add rule to Gemini file with H3 heading (under "## Development Rules")
+        echo "" >> "$gemini_file"
         if [[ -n "$rule_id" ]]; then
-            echo "## [${rule_id}] ${title}" >> "$gemini_file"
+            echo "### [${rule_id}] ${title}" >> "$gemini_file"
         else
-            echo "## ${title}" >> "$gemini_file"
+            echo "### ${title}" >> "$gemini_file"
         fi
         echo "" >> "$gemini_file"
         
-        # Extract content after frontmatter
+        # Extract content after frontmatter (only treat the first frontmatter block at the top)
         local in_frontmatter=false
-        local frontmatter_count=0
+        local frontmatter_done=false
+        local heading_skipped=false
         
         while IFS= read -r line; do
-            if [[ "$line" == "---" ]]; then
+            # Handle only the first frontmatter pair at the start of the file
+            if [[ "$frontmatter_done" == false && "$line" == "---" ]]; then
                 if [[ "$in_frontmatter" == false ]]; then
                     in_frontmatter=true
-                    ((frontmatter_count++))
                 else
                     in_frontmatter=false
-                    ((frontmatter_count++))
+                    frontmatter_done=true
                 fi
                 continue
             fi
             
-            # Skip frontmatter content
+            # Skip lines while inside the top-of-file frontmatter
             if [[ "$in_frontmatter" == true ]]; then
                 continue
             fi
             
-            # Skip initial heading (already used as section title)
-            if [[ "$frontmatter_count" -eq 2 && "$line" =~ ^#[[:space:]] ]]; then
-                frontmatter_count=3  # Mark that we've processed the heading
+            # Skip the first markdown H1 heading after frontmatter
+            if [[ "$frontmatter_done" == true && "$heading_skipped" == false && "$line" =~ ^#[[:space:]] ]]; then
+                heading_skipped=true
                 continue
             fi
             
-            # Add all other content
+            # Add all other content (including code fences and YAML examples)
             echo "$line" >> "$gemini_file"
         done < "$rule_file"
         
@@ -435,23 +550,24 @@ generate_gemini_file() {
     done
     
     print_info "Gemini file created successfully: ${gemini_file#${PROJECT_ROOT}/}"
-    log_message "SUCCESS" "Created Gemini file: $gemini_file with ${#rule_files[@]} rules"
+    echo "SUCCESS: Created Gemini file: $gemini_file with ${#rule_files[@]} rules" >&2
 }
 
 # Copy documentation files for Codex CLI
-copy_doc_files() {
+copy_doc_files_to_project() {
+    local target_project_root="$1"
     local doc_files=("AGENTS.md" "ARCHITECTURE.md" "RULES.md")
     
     print_step "Processing target: Codex CLI Documentation"
-    log_message "INFO" "Processing target: Codex CLI Documentation"
+    echo "INFO: Processing target: Codex CLI Documentation" >&2
     
     for doc_file in "${doc_files[@]}"; do
         local source_file="${ASSETS_DIR}/${doc_file}"
-        local dest_file="${PROJECT_ROOT}/${doc_file}"
+        local dest_file="${target_project_root}/${doc_file}"
         
         if [[ ! -f "$source_file" ]]; then
             print_error "Documentation template not found: ${source_file#${PROJECT_ROOT}/}"
-            log_message "ERROR" "Documentation template not found: $source_file"
+            echo "ERROR: Documentation template not found: $source_file" >&2
             ((ERRORS_COUNT++))
             continue
         fi
@@ -463,7 +579,7 @@ copy_doc_files() {
         cp "$source_file" "$dest_file"
         
         print_info "Copied ${doc_file} to project root"
-        log_message "SUCCESS" "Copied documentation file: $doc_file"
+        echo "SUCCESS: Copied documentation file: $doc_file" >&2
         ((FILES_CONVERTED++))
     done
 }
@@ -504,44 +620,93 @@ main() {
     ensure_log_directory
     enable_logging
     
-    # Default values
-    local source_dir="${PROJECT_ROOT}/master-rules"
-    local targets="cursor,github,claude,gemini,docs"
+    # Initialize variables
+    local project_root=""
+    local targets="cursor,github,claude,gemini,docs"  # default all targets
     
     # Parse arguments
     while [[ $# -gt 0 ]]; do
-        case "$1" in
-            --from)
-                source_dir="${PROJECT_ROOT}/$2"
-                shift 2
-                ;;
+        case $1 in
             --to)
                 targets="$2"
                 shift 2
+                ;;
+            --from)
+                shift  # skip --from for now, we use positional arg
                 ;;
             -h|--help)
                 show_usage
                 exit 0
                 ;;
-            *)
-                print_error "Unknown option: $1"
+            -*|--*)
+                print_error "Unknown option $1"
                 show_usage
                 exit 1
+                ;;
+            *)
+                if [[ -z "$project_root" ]]; then
+                    project_root="$1"
+                else
+                    print_error "Multiple project paths specified: $project_root and $1"
+                    exit 1
+                fi
+                shift
                 ;;
         esac
     done
     
-    # Check if source directory exists
-    if [[ ! -d "$source_dir" ]]; then
-        print_error "Source directory not found: ${source_dir#${PROJECT_ROOT}/}"
+    # Validate required project root
+    if [[ -z "$project_root" ]]; then
+        print_error "Missing required project root path argument"
+        echo ""
+        show_usage
+        exit 1
+    fi
+    
+    # Get and validate project root path
+    project_root="$(cd "$project_root" 2>/dev/null && pwd)" || {
+        print_error "Invalid project root path: $project_root"
+        print_error "The specified path does not exist or is not accessible."
+        exit 1
+    }
+    
+    # Configuration - relative to project root
+    local master_rules_dir="$project_root/master-rules"
+    
+    # Show relative paths for readability
+    local relative_project="${project_root#${PWD}/}"
+    [[ "$relative_project" == "$project_root" ]] && relative_project="$project_root"
+    local relative_source="${master_rules_dir#${PWD}/}"
+    [[ "$relative_source" == "$master_rules_dir" ]] && relative_source="$master_rules_dir"
+    
+    print_info "Synchronizing IDE rules from master-rules"
+    print_info "Project root: $relative_project"
+    print_info "Source directory: $relative_source"
+    print_info "Target formats: $targets"
+    
+    # Check if master-rules directory exists
+    if [[ ! -d "$master_rules_dir" ]]; then
+        print_error "Master-rules directory not found: $relative_source"
         print_error "Ensure your project has a master-rules/ directory with rule files."
         exit 1
     fi
     
+        # Set source_dir to master_rules_dir for consistency with existing code
+    source_dir="$master_rules_dir"
+
+    # Set USER_PROJECT_ROOT for functions that need the user's project path
+    USER_PROJECT_ROOT="$project_root"
+
+    # Initialize global counters
+    FILES_PROCESSED=0
+    FILES_CONVERTED=0
+    FILES_SKIPPED=0
+    ERRORS_COUNT=0
+    
     # Check if assets directory exists
     if [[ ! -d "$ASSETS_DIR" ]]; then
-        print_error "Assets directory not found: ${ASSETS_DIR#${PROJECT_ROOT}/}"
-        print_error "Ensure your project has an assets/ directory with template files."
+        print_error "Assets directory not found: $ASSETS_DIR"
+        print_error "Ensure the script's assets/ directory contains template files."
         exit 1
     fi
     
@@ -550,8 +715,8 @@ main() {
     
     # Log conversion start
     log_message "INFO" "Starting rules synchronization"
-    log_message "INFO" "Project root: $PROJECT_ROOT"
-    log_message "INFO" "Source directory: $source_dir"
+    log_message "INFO" "Project root: $relative_project"
+    log_message "INFO" "Source directory: $relative_source"
     log_message "INFO" "Target formats: $targets"
     
     # Convert targets string to array
@@ -561,23 +726,23 @@ main() {
     for target in "${target_array[@]}"; do
         case "$target" in
             cursor)
-                generate_cursor_files "$source_dir" "${PROJECT_ROOT}/.cursor/rules"
+                generate_cursor_files "$source_dir" "${project_root}/.cursor/rules"
                 ;;
             
             github)
-                generate_github_files "$source_dir" "${PROJECT_ROOT}/.github/instructions"
+                generate_github_files "$source_dir" "${project_root}/.github/instructions"
                 ;;
             
             claude)
-                generate_claude_file "$source_dir" "${PROJECT_ROOT}/CLAUDE.md"
+                generate_claude_file "$source_dir" "${project_root}/CLAUDE.md"
                 ;;
             
             gemini)
-                generate_gemini_file "$source_dir" "${PROJECT_ROOT}/GEMINI.md"
+                generate_gemini_file "$source_dir" "${project_root}/GEMINI.md"
                 ;;
             
             docs)
-                copy_doc_files
+                copy_doc_files_to_project "$project_root"
                 ;;
             
             *)
