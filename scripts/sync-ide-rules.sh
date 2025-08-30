@@ -153,7 +153,7 @@ transform_frontmatter_to_applyTo() {
         if [[ $line == '---' ]]; then
             if [[ $in_fm -eq 0 ]]; then in_fm=1; continue; else fm_done=1; in_fm=0; continue; fi
         fi
-        if [[ $in_fm -eq 1 ]]; then
+    if [[ $in_fm -eq 1 ]]; then
             case "$line" in
                 description:*) description_line="$line" ;;
                 globs:*) globs_line="$line" ;;
@@ -166,7 +166,7 @@ transform_frontmatter_to_applyTo() {
         else
             body+=("$line")
         fi
-        [[ $fm_done -eq 1 ]] && break
+    # Removed premature break so we capture the entire body after frontmatter
     done < "$src"
 
     # If apply_to not already set, derive from globs / alwaysApply
