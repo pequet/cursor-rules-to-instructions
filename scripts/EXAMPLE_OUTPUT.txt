@@ -1,0 +1,31 @@
+IDE Rules Synchronizer v3.0
+========================================================================
+Synchronizing IDE rules from master-rules
+Project root: Projects/Seed/Views/Public Repositories/Public Repository Templates/cursor-project-boilerplate
+Source directory: Projects/Seed/Views/Public Repositories/Public Repository Templates/cursor-project-boilerplate/master-rules
+Target formats: cursor,github,claude,gemini,docs
+- Processing target: Cursor IDE
+Cursor files generation completed. Processed 34 rules.
+- Processing target: GitHub Copilot
+GitHub files generation completed. Processed 34 rules.
+- Processing target: Claude Code
+Claude files generation completed. Processed 34 rules.
+- Processing target: Gemini CLI
+Gemini files generation completed. Processed 34 rules.
+- Processing target: Codex CLI Documentation
+Copied AGENTS.md to project root
+Copied ARCHITECTURE.md to project root
+Copied RULES.md to project root
+========================================================================
+🏁 Synchronization complete!
+Converted: 139 files
+========================================================================
+Next steps:
+1. Review the generated files in their respective locations:
+   - Codex CLI Documentation: AGENTS.md, ARCHITECTURE.md, RULES.md
+   - Cursor IDE: .cursor/rules/
+   - GitHub Copilot: .github/instructions/
+   - Claude Code: CLAUDE.md
+   - Gemini CLI: GEMINI.md
+2. Test with your preferred AI coding assistants
+3. Make any necessary adjustments to the rule files
