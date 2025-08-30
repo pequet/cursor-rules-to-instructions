@@ -45,3 +45,4 @@ Example deployment: Kubernetes cluster, GitHub Actions CI/CD, Terraform infrastr
 ## Development Rules
 
 The following rules should be applied when working with this codebase:
+

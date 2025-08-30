@@ -128,6 +128,18 @@ backup_file() {
     return 0
 }
 
+# Ensure balanced triple backtick code fences in a file (append closing fence if odd count)
+ensure_balanced_code_fences() {
+    local file="$1"
+    [[ -f "$file" ]] || return 0
+    local count
+    # Count lines that start with ``` optionally followed by a language token
+    count=$(grep -E '^```' "$file" | wc -l | tr -d ' \t') || count=0
+    if [[ $count -gt 0 && $((count % 2)) -eq 1 ]]; then
+        echo "\n\n\`\`\`" >> "$file"
+    fi
+}
+
 # Convert Cursor-style frontmatter (globs / alwaysApply) to single applyTo line
 # Rules:
 #  - If globs has one specific pattern → applyTo: "thatPattern"
@@ -426,11 +438,15 @@ generate_claude_file() {
         if [[ "$prev_blank" == false ]]; then
             echo "" >> "$claude_file"
         fi
+        # Balance fences after each rule block to localize issues
+        ensure_balanced_code_fences "$claude_file"
         
         ((FILES_CONVERTED++))
     done
     
     print_info "Claude files generation completed. Processed ${#rule_files[@]} rules."
+    # Final balance pass
+    ensure_balanced_code_fences "$claude_file"
     # print_info "Claude file created successfully: ${claude_file#${PROJECT_ROOT}/}"
 }
 
@@ -570,12 +586,14 @@ generate_gemini_file() {
         if [[ "$prev_blank" == false ]]; then
             echo "" >> "$gemini_file"
         fi
+    ensure_balanced_code_fences "$gemini_file"
         
         ((FILES_CONVERTED++))
     done
     
     print_info "Gemini files generation completed. Processed ${#rule_files[@]} rules."
     # print_info "Gemini file created successfully: ${gemini_file#${PROJECT_ROOT}/}"
+    ensure_balanced_code_fences "$gemini_file"
 }
 
 # Copy documentation files for Codex CLI
@@ -600,6 +618,8 @@ copy_doc_files_to_project() {
         
         # Copy template to destination
         cp "$source_file" "$dest_file"
+    # Balance code fences in copied doc
+    ensure_balanced_code_fences "$dest_file"
         
         print_info "Copied ${doc_file} to project root"
         ((FILES_CONVERTED++))
