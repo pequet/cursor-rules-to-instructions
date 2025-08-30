@@ -128,6 +128,92 @@ backup_file() {
     return 0
 }
 
+# Convert Cursor-style frontmatter (globs / alwaysApply) to single applyTo line
+# Rules:
+#  - If globs has one specific pattern → applyTo: "thatPattern"
+#  - If globs has multiple patterns → join with commas inside one quoted string
+#  - Universal pair ["*", "**/*"] with alwaysApply true → applyTo: "*,**/*"
+#  - alwaysApply true with no globs → applyTo: "*,**/*"
+#  - Remove original globs / alwaysApply keys entirely
+transform_frontmatter_to_applyTo() {
+    local src="$1" dest="$2"
+    local in_fm=0 fm_done=0
+    local line
+    local globs_line="" always_apply="" apply_to="" description_line=""
+    local -a other_meta=()
+    local -a body=()
+
+    # Read file once; handle files without frontmatter quickly
+    IFS= read -r line < "$src" || true
+    if [[ "$line" != '---' ]]; then
+        cp "$src" "$dest"; return 0
+    fi
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ $line == '---' ]]; then
+            if [[ $in_fm -eq 0 ]]; then in_fm=1; continue; else fm_done=1; in_fm=0; continue; fi
+        fi
+        if [[ $in_fm -eq 1 ]]; then
+            case "$line" in
+                description:*) description_line="$line" ;;
+                globs:*) globs_line="$line" ;;
+                alwaysApply:*) always_apply="${line#*:}" ;;
+                applyTo:*) # If already present, keep & we won't attempt conversion
+                    apply_to="${line#applyTo: }"; apply_to="${apply_to%\r}"; apply_to="${apply_to%\n}"; apply_to="${apply_to//\"/}" ;;
+                '') ;; # skip blank inside fm
+                *) other_meta+=("$line") ;;
+            esac
+        else
+            body+=("$line")
+        fi
+        [[ $fm_done -eq 1 ]] && break
+    done < "$src"
+
+    # If apply_to not already set, derive from globs / alwaysApply
+    if [[ -z $apply_to ]]; then
+        # Normalize always_apply (strip spaces)
+        local always_trim="${always_apply//[[:space:]]/}"
+        if [[ -n $globs_line ]]; then
+            local raw=${globs_line#globs:}
+            # Extract content inside [ ... ]
+            raw=${raw#*[[]}; raw=${raw%%]*}
+            local patterns=()
+            IFS=',' read -r -a parts <<< "$raw"
+            for p in "${parts[@]}"; do
+                p="${p//\"/}"; p="${p//\'/}"; p="${p//[[:space:]]/}"; [[ -n $p ]] && patterns+=("$p")
+            done
+            if [[ ${#patterns[@]} -eq 2 ]]; then
+                # Sort manually without paste; rely on printf+sort
+                local sorted=$(printf '%s\n' "${patterns[@]}" | sort | tr '\n' ',')
+                sorted="${sorted%,}"
+                if [[ $sorted == '*,**/*' ]]; then
+                    apply_to="*,**/*"
+                fi
+            fi
+            if [[ -z $apply_to ]]; then
+                if [[ ${#patterns[@]} -eq 1 ]]; then
+                    apply_to="${patterns[0]}"
+                elif [[ ${#patterns[@]} -gt 1 ]]; then
+                    apply_to="$(IFS=','; echo "${patterns[*]}")"
+                fi
+            fi
+        fi
+        if [[ -z $apply_to && $always_trim == true ]]; then
+            apply_to="*,**/*"
+        fi
+    fi
+
+    {
+        echo '---'
+        [[ -n $description_line ]] && echo "$description_line"
+    # Safe expansion with set -u
+    for m in ${other_meta+"${other_meta[@]}"}; do [[ -n $m ]] && echo "$m"; done
+        [[ -n $apply_to ]] && echo "applyTo: \"$apply_to\""
+        echo '---'
+        printf '%s\n' "${body[@]}"
+    } > "$dest"
+}
+
 # *
 # * Target Generation Functions
 # *
@@ -191,60 +277,24 @@ generate_cursor_files() {
 
 # Create GitHub Copilot .instructions.md files
 generate_github_files() {
-    local source_dir="$1"
-    local github_instructions_dir="$2"
-    
+    local source_dir="$1" github_instructions_dir="$2"
     print_step "Processing target: GitHub Copilot"
-    
-    log_message "DEBUG" "Source dir: $source_dir"
-    log_message "DEBUG" "GitHub instructions dir: $github_instructions_dir"
-    log_message "DEBUG" "ASSETS_DIR: $ASSETS_DIR"
-    
-    # Create target directory if it doesn't exist
     mkdir -p "$github_instructions_dir"
-    
-    # Copy README if it exists in assets
-    
     local github_readme="${ASSETS_DIR}/.github/instructions/README.md"
-    
     if [[ -f "$github_readme" ]]; then
-        backup_file "${github_instructions_dir}/README.md" || log_message "DEBUG" "GitHub README backup skipped (file doesn't exist)"
-        log_message "DEBUG" "Backup completed, copying README"
+        backup_file "${github_instructions_dir}/README.md" || true
         cp "$github_readme" "${github_instructions_dir}/README.md"
-        log_message "INFO" "Copied GitHub README to: ${github_instructions_dir}/README.md"
-    else
-        print_warning "README file not found: $github_readme"
     fi
-    
-    # Find all source files
-    log_message "INFO" "Looking for .md files in: $source_dir"
-    
     local file_count=0
-    while IFS= read -r -d '' source_file; do
+    while IFS= read -r -d '' src; do
         ((file_count++))
-        log_message "INFO" "Processing file $file_count: $source_file"
-        
         ((FILES_PROCESSED++))
-        local basename_file=$(basename "$source_file")
-        local dest_file="${github_instructions_dir}/${basename_file%.md}.instructions.md"
-        
-        log_message "INFO" "Converting $basename_file to ${basename_file%.md}.instructions.md"
-        
-        # Backup existing file
-        backup_file "$dest_file" || log_message "DEBUG" "Backup failed or file didn't exist"
-        
-        
-        # Convert frontmatter and copy content
-        # For simplicity, assuming a simple copy with extension change
-        # In a full implementation, you would process frontmatter here
-        cp "$source_file" "$dest_file"
-        
-        # print_info "Generated: ${dest_file#${PROJECT_ROOT}/}"
-        log_message "INFO" "Generated GitHub Copilot file: $dest_file"
+        local base=$(basename "$src")
+        local dest="${github_instructions_dir}/${base%.md}.instructions.md"
+        backup_file "$dest" || true
+        transform_frontmatter_to_applyTo "$src" "$dest"
         ((FILES_CONVERTED++))
-        log_message "DEBUG" "File processing completed for: $source_file"
-    done < <(find "$source_dir" -name "*.md" -type f -print0)
-    
+    done < <(find "$source_dir" -type f -name '*.md' -print0)
     print_info "GitHub files generation completed. Processed $file_count rules."
 }
 
