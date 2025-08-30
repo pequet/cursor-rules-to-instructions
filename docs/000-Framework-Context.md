@@ -35,7 +35,7 @@ Root/
 
 ### Locating This Repository
 
-Putting it all together, this public repository (`cursor-rules-to-instructions/`) is a `Method` within the `Core` folder.
+Putting it all together, this public repository (`ide-rules-synchronizer/`) is a `Method` within the `Core` folder.
 
 ```text
 Core/
@@ -44,18 +44,18 @@ Core/
         └── Operations/
             └── Scripts/
                 └── IDE/
-                    └── Convert Rules to Instructions/
-                        ├── cursor-rules-to-instructions/  # This Public Repo
-                        └── private/                       # Assets tracked by the parent framework
+                    └── Rules-Synchronizer/
+                        ├── ide-rules-synchronizer/  # This Public Repo
+                        └── private/                 # Assets tracked by the parent framework
 ```
 
 ### Level 2: Split Repository Pattern
 
-This path reveals a **Public-Private Pattern** at the `Convert Rules to Instructions` level, which separates the public-facing code (the submodule) from its private development assets (`private/`). These private assets, typically including `.cursor/`, `.specstory/`, `inbox/`, `memory-bank/` (and confidential files) are thus allowed to be informed and tracked by the parent framework, not the public submodule.
+This path reveals a **Public-Private Pattern** at the `Rules-Synchronizer` level, which separates the public-facing code (the submodule) from its private development assets (`private/`). These private assets, typically including `.cursor/`, `.specstory/`, `inbox/`, `memory-bank/` (and confidential files) are thus allowed to be informed and tracked by the parent framework, not the public submodule.
 
 ```text
-Convert Rules to Instructions/                   # Grouping
-├── cursor-rules-to-instructions/                # This Public Repo (contains symlinks to the private assets)
+Rules-Synchronizer/                              # Grouping
+├── ide-rules-synchronizer/                      # This Public Repo (contains symlinks to the private assets)
 │   ├── .cursor -> ../private/.cursor/
 │   ├── .specstory -> ../private/.specstory/
 │   ├── inbox -> ../private/inbox/
@@ -77,6 +77,6 @@ This organization allows for a clean public repository while maintaining a rich,
 
 This layered structure enables a powerful and organized development workflow guided by three key principles:
 
--   **Inbox-Driven Development:** All new ideas, notes, tasks, and raw information related to this project are first captured in the parent `Models/0. Inbox/` and then moved to the public repository `cursor-rules-to-instructions/inbox/`. This keeps the public repository clean while ensuring no idea is lost.
--   **Archival Over Deletion:** Following a "never delete" principle, files are moved to the `cursor-rules-to-instructions/archives/` or back to the parent `Models/4. Archives/` instead of being deleted. This preserves a complete history of the project's evolution.
+-   **Inbox-Driven Development:** All new ideas, notes, tasks, and raw information related to this project are first captured in the parent `Models/0. Inbox/` and then moved to the public repository `ide-rules-synchronizer/inbox/`. This keeps the public repository clean while ensuring no idea is lost.
+-   **Archival Over Deletion:** Following a "never delete" principle, files are moved to the `ide-rules-synchronizer/archives/` or back to the parent `Models/4. Archives/` instead of being deleted. This preserves a complete history of the project's evolution.
 -   **Private Asset Management:** The sibling `private/` directory stores development artifacts (`.cursor/`, `.specstory/`, `inbox/`, `memory-bank/`) that are essential for development and should be versioned in the private parent repository, but are not part of the public-facing submodule. 
